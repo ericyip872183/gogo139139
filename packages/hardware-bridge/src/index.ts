@@ -1,0 +1,10 @@
+// 统一导出，业务模块只需引入此文件
+export { HardwareManager } from './core/HardwareManager'
+export type { IHardwareDevice } from './core/IHardwareDevice'
+export type { IDataFrame, ModuleType } from './core/IDataFrame'
+export { FRAME_HEADER, FRAME_TAIL } from './core/IDataFrame'
+export { BluetoothDevice } from './bluetooth/BluetoothDevice'
+export type { BluetoothDeviceOptions } from './bluetooth/BluetoothDevice'
+export { SerialDevice } from './serial/SerialDevice'
+export type { SerialDeviceOptions } from './serial/SerialDevice'
+export { FrameParser, FrameEncoder } from './protocol/FrameParser'

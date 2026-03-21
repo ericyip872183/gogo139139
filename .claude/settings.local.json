@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \":*)",
+      "Bash(pip install:*)",
+      "Bash(find /c/项目/panlei/packages/backend/src/modules -type f -name *.ts)",
+      "Bash(find c:/项目/panlei/packages/backend/src/modules -type f -name *)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm approve-builds:*)",
+      "Bash(npx prisma:*)",
+      "Bash(docker compose:*)",
+      "Bash(where docker:*)",
+      "Read(//c/Program Files/Docker/Docker/resources/bin/**)",
+      "Bash(mysql --version)",
+      "Bash(redis-cli --version)",
+      "Bash(ssh -i \"C:/Users/23791/.ssh/id_rsa\" -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@120.77.144.5 \"uname -a && cat /etc/os-release | head -3 && free -h && df -h /\")",
+      "Bash(ssh -i \"C:/Users/23791/.ssh/id_rsa\" -o StrictHostKeyChecking=no root@120.77.144.5 \"docker --version 2>/dev/null || echo ''Docker: not installed''; git --version; node --version 2>/dev/null || echo ''Node: not installed''; ss -tlnp | grep -E '':80|:443|:3000|:3306'' || echo ''no relevant ports open''\")",
+      "Bash(ssh -i \"C:/Users/23791/.ssh/id_rsa\" -o StrictHostKeyChecking=no root@120.77.144.5 \"redis-cli ping 2>/dev/null || echo ''Redis not running''; pm2 --version 2>/dev/null || echo ''PM2 not installed''; pnpm --version 2>/dev/null || echo ''pnpm not installed''; ls /etc/nginx/sites-enabled/ai-assistant-frontend\")",
+      "Bash(ssh -i \"C:/Users/23791/.ssh/id_rsa\" -o StrictHostKeyChecking=no root@120.77.144.5 \"mysql -u root -e \"\"CREATE DATABASE IF NOT EXISTS panlei_prod CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; CREATE USER IF NOT EXISTS ''panlei''@''localhost'' IDENTIFIED BY ''Panlei@2024#Prod''; GRANT ALL PRIVILEGES ON panlei_prod.* TO ''panlei''@''localhost''; FLUSH PRIVILEGES; SHOW DATABASES;\"\"\")",
+      "Bash(ssh -i \"C:/Users/23791/.ssh/id_rsa\" -o StrictHostKeyChecking=no root@120.77.144.5 \"redis-cli CONFIG GET requirepass\")",
+      "Bash(rsync -avz --progress -e \"ssh -i C:/Users/23791/.ssh/id_rsa -o StrictHostKeyChecking=no\" --exclude=\"node_modules\" --exclude=\".pnpm-store\" --exclude=\"packages/*/node_modules\" --exclude=\"packages/backend/.env\" --exclude=\"packages/frontend/dist\" --exclude=\"packages/backend/dist\" --exclude=\"*.pdf\" \"c:/项目/panlei/\" root@120.77.144.5:/root/panlei/)",
+      "Bash(where rsync:*)",
+      "Read(//c/Program Files/Git/usr/bin/**)",
+      "Bash(ssh -i \"C:/Users/23791/.ssh/id_rsa\" -o StrictHostKeyChecking=no root@120.77.144.5 \"cd /root && git init panlei 2>/dev/null || true && ls /root/panlei/\")",
+      "Bash(scp -i \"C:/Users/23791/.ssh/id_rsa\" -o StrictHostKeyChecking=no /tmp/panlei.tar.gz root@120.77.144.5:/root/panlei.tar.gz)",
+      "Bash(ssh -i \"C:/Users/23791/.ssh/id_rsa\" -o StrictHostKeyChecking=no root@120.77.144.5 \"cd /root && rm -rf panlei && mkdir panlei && tar -xzf panlei.tar.gz -C panlei && rm panlei.tar.gz && ls /root/panlei/\")",
+      "Bash(ssh -i \"C:/Users/23791/.ssh/id_rsa\" -o StrictHostKeyChecking=no root@120.77.144.5 \"cd /root/panlei && pnpm install 2>&1 | tail -10\")",
+      "Bash(ssh -i \"$HOME/.ssh/id_rsa\" root@120.77.144.5 'cat /root/panlei/.env | grep JWT_SECRET')",
+      "Bash(ssh -i \"$HOME/.ssh/id_rsa\" root@120.77.144.5 'cd /root/panlei/packages/backend && cat .env 2>/dev/null || echo \"\"no .env in backend\"\"')",
+      "Bash(ssh -i:*)",
+      "Bash(md5sum packages/frontend/dist/assets/index-*.js)",
+      "Bash(certutil -hashfile packages/frontend/dist/assets/index-*.js MD5)",
+      "Bash(curl -s -k \"https://pl.7025700.vip\")",
+      "Bash(ssh -i \"$HOME/.ssh/id_rsa\" root@120.77.144.5 'RESP=$\\(curl -s -X POST \"\"http://localhost:3002/api/auth/login\"\" -H \"\"Content-Type: application/json\"\" -d \"\"{\\\\\"\"tenantCode\\\\\"\":\\\\\"\"panlei\\\\\"\",\\\\\"\"username\\\\\"\":\\\\\"\"admin\\\\\"\",\\\\\"\"password\\\\\"\":\\\\\"\"admin123\\\\\"\"}\"\"\\) && echo \"\"$RESP\"\" && TOKEN=$\\(echo $RESP | grep -o \"\"\\\\\"\"token\\\\\"\":\\\\\"\"[^\\\\\"\"]*\\\\\"\"\"\" | cut -d\"\"\\\\\"\"\"\" -f4\\) && echo \"\"Token: $TOKEN\"\" && curl -s \"\"http://localhost:3002/api/auth/profile\"\" -H \"\"Authorization: Bearer $TOKEN\"\"')",
+      "Bash(python3 -m json.tool)",
+      "Bash(certutil -hashfile \"c:\\\\项目\\\\panlei\\\\packages\\\\frontend\\\\dist\\\\assets\\\\index-Ck6_hncp.js\" MD5)"
+    ],
+    "additionalDirectories": [
+      "c:\\項目\\panlei\\packages\\backend\\src\\modules\\questions",
+      "c:\\項目"
+    ]
+  }
+}

@@ -1,0 +1,401 @@
+// Prisma Schema — 盼蕾平台
+// Sprint 1: tenant / user 基础表
+// Sprint 2: organization 组织架构
+// Sprint 3-6: question / paper / exam / score 考试体系
+// Sprint 7: score_table 评分表体系
+// Sprint 8: module 模块授权
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── 多租户 ───────────────────────────────────────────
+
+model Tenant {
+  id          String   @id @default(cuid())
+  name        String   @db.VarChar(100)     // 机构名称
+  code        String   @unique @db.VarChar(50)  // 机构编码
+  logo        String?  @db.VarChar(500)
+  isActive    Boolean  @default(true)
+  expiredAt   DateTime?                         // 授权到期时间
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users               User[]
+  organizations       Organization[]
+  tenantModules       TenantModule[]
+  questionCategories  QuestionCategory[]
+  questions           Question[]
+  papers              Paper[]
+  exams               Exam[]
+  scoreTables         ScoreTable[]
+
+  @@map("tenants")
+}
+
+// ─── 用户 ─────────────────────────────────────────────
+
+enum UserRole {
+  SUPER_ADMIN   // 超级管理员（平台方，唯一）
+  TENANT_ADMIN  // 机构管理员（每机构唯一）
+  SCHOOL        // 学校管理员
+  CLASS         // 班级管理员
+  TEACHER       // 教师
+  STUDENT       // 学生
+}
+
+model User {
+  id           String    @id @default(cuid())
+  tenantId     String                          // 所属机构
+  username     String    @db.VarChar(50)
+  password     String    @db.VarChar(255)      // bcrypt hash
+  realName     String    @db.VarChar(50)
+  role         UserRole  @default(STUDENT)
+  studentNo    String?   @db.VarChar(50)       // 学号/准考证号
+  phone        String?   @db.VarChar(20)
+  email        String?   @db.VarChar(100)
+  avatar       String?   @db.VarChar(500)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  userOrgs  UserOrg[]
+  examParticipants ExamParticipant[]
+  examAnswers      ExamAnswer[]
+  scores           Score[]
+  judgeRecords     ScoreRecord[] @relation("JudgeRecords")
+  targetRecords    ScoreRecord[] @relation("TargetRecords")
+
+  @@unique([tenantId, username])
+  @@index([tenantId])
+  @@map("users")
+}
+
+// ─── 组织架构（Sprint 2）─────────────────────────────
+
+model Organization {
+  id        String  @id @default(cuid())
+  tenantId  String
+  name      String  @db.VarChar(100)
+  parentId  String?                     // 父级ID，null为顶级
+  level     Int     @default(1)         // 层级 1-4
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id])
+  parent   Organization?  @relation("OrgTree", fields: [parentId], references: [id])
+  children Organization[] @relation("OrgTree")
+  userOrgs UserOrg[]
+
+  @@index([tenantId, parentId])
+  @@map("organizations")
+}
+
+model UserOrg {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([userId, organizationId])
+  @@map("user_orgs")
+}
+
+// ─── 题库（Sprint 3）─────────────────────────────────
+
+enum QuestionType {
+  SINGLE    // 单选题
+  MULTIPLE  // 多选题
+  JUDGE     // 判断题
+  FILL      // 填空题
+}
+
+enum Difficulty {
+  EASY    // 易
+  MEDIUM  // 中
+  HARD    // 难
+}
+
+model QuestionCategory {
+  id         String   @id @default(cuid())
+  tenantId   String
+  name       String   @db.VarChar(100)
+  parentId   String?
+  moduleType String?  @db.VarChar(50)   // 所属模块，null=母本共用
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant     Tenant             @relation(fields: [tenantId], references: [id])
+  parent     QuestionCategory?  @relation("CatTree", fields: [parentId], references: [id])
+  children   QuestionCategory[] @relation("CatTree")
+  questions  Question[]
+
+  @@index([tenantId, parentId])
+  @@map("question_categories")
+}
+
+model Question {
+  id           String       @id @default(cuid())
+  tenantId     String
+  categoryId   String?
+  type         QuestionType
+  difficulty   Difficulty   @default(MEDIUM)
+  content      String       @db.Text          // 题目内容（支持富文本/HTML）
+  explanation  String?      @db.Text          // 解析
+  score        Float        @default(1)       // 默认分值（组卷时可覆盖）
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  category        QuestionCategory? @relation(fields: [categoryId], references: [id])
+  options         QuestionOption[]
+  paperQuestions  PaperQuestion[]
+  examAnswers     ExamAnswer[]
+
+  @@index([tenantId, type])
+  @@index([tenantId, categoryId])
+  @@map("questions")
+}
+
+model QuestionOption {
+  id         String   @id @default(cuid())
+  questionId String
+  label      String   @db.VarChar(10)    // A/B/C/D 或 填空序号
+  content    String   @db.Text
+  isCorrect  Boolean  @default(false)
+  sortOrder  Int      @default(0)
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@map("question_options")
+}
+
+// ─── 试卷与考试（Sprint 4-6）─────────────────────────
+
+model Paper {
+  id          String   @id @default(cuid())
+  tenantId    String
+  title       String   @db.VarChar(200)
+  description String?  @db.Text
+  totalScore  Float    @default(0)
+  duration    Int      @default(60)   // 考试时长（分钟）
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  paperQuestions  PaperQuestion[]
+  exams           Exam[]
+
+  @@index([tenantId])
+  @@map("papers")
+}
+
+model PaperQuestion {
+  id         String @id @default(cuid())
+  paperId    String
+  questionId String
+  sortOrder  Int    @default(0)
+  score      Float? // 覆盖题目默认分值
+
+  paper    Paper    @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id])
+
+  @@unique([paperId, questionId])
+  @@index([paperId])
+  @@map("paper_questions")
+}
+
+enum ExamStatus {
+  DRAFT      // 草稿
+  PUBLISHED  // 已发布（未开始）
+  ONGOING    // 进行中
+  ENDED      // 已结束
+  CANCELLED  // 已取消
+}
+
+model Exam {
+  id          String     @id @default(cuid())
+  tenantId    String
+  paperId     String
+  title       String     @db.VarChar(200)
+  description String?    @db.Text
+  status      ExamStatus @default(DRAFT)
+  startAt     DateTime?
+  endAt       DateTime?
+  duration    Int?       // 覆盖试卷时长
+  allowLate   Boolean    @default(false)
+  maxSwitch   Int        @default(3)   // 最大允许切屏次数
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id])
+  paper        Paper              @relation(fields: [paperId], references: [id])
+  participants ExamParticipant[]
+  answers      ExamAnswer[]
+  scores       Score[]
+
+  @@index([tenantId, status])
+  @@map("exams")
+}
+
+model ExamParticipant {
+  id       String @id @default(cuid())
+  examId   String
+  userId   String
+  hasSubmitted Boolean @default(false)
+  submittedAt  DateTime?
+  switchCount  Int     @default(0)  // 切屏次数
+
+  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([examId, userId])
+  @@index([examId])
+  @@map("exam_participants")
+}
+
+model ExamAnswer {
+  id         String   @id @default(cuid())
+  examId     String
+  userId     String
+  questionId String
+  answer     String   @db.Text  // JSON格式：单选"A"，多选["A","B"]，判断true/false，填空"..."
+  isCorrect  Boolean?
+  score      Float    @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  exam     Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+  question Question @relation(fields: [questionId], references: [id])
+
+  @@unique([examId, userId, questionId])
+  @@index([examId, userId])
+  @@map("exam_answers")
+}
+
+model Score {
+  id          String   @id @default(cuid())
+  examId      String
+  userId      String
+  totalScore  Float    @default(0)
+  maxScore    Float    @default(0)
+  correctRate Float    @default(0)  // 正确率 0-1
+  rank        Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  exam Exam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([examId, userId])
+  @@index([examId])
+  @@map("scores")
+}
+
+// ─── 评分表（Sprint 7）────────────────────────────────
+
+enum ScoreTableType {
+  ADD   // 加分制
+  MINUS // 减分制
+}
+
+model ScoreTable {
+  id          String         @id @default(cuid())
+  tenantId    String
+  name        String         @db.VarChar(200)
+  type        ScoreTableType @default(ADD)
+  totalScore  Float          @default(100)
+  description String?        @db.Text
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
+  items       ScoreItem[]
+  records     ScoreRecord[]
+
+  @@index([tenantId])
+  @@map("score_tables")
+}
+
+model ScoreItem {
+  id          String  @id @default(cuid())
+  tableId     String
+  name        String  @db.VarChar(200)
+  score       Float   @default(0)
+  description String? @db.Text
+  sortOrder   Int     @default(0)
+
+  table ScoreTable @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+  @@index([tableId])
+  @@map("score_items")
+}
+
+model ScoreRecord {
+  id          String   @id @default(cuid())
+  tableId     String
+  judgeId     String   // 考官ID
+  targetId    String   // 被考评人ID
+  totalScore  Float    @default(0)
+  itemScores  Json     // { itemId: score, ... }
+  note        String?  @db.Text
+  isSynced    Boolean  @default(true)  // 离线同步状态
+  createdAt   DateTime @default(now())
+
+  table  ScoreTable @relation(fields: [tableId], references: [id])
+  judge  User       @relation("JudgeRecords", fields: [judgeId], references: [id])
+  target User       @relation("TargetRecords", fields: [targetId], references: [id])
+
+  @@index([tableId])
+  @@index([targetId])
+  @@map("score_records")
+}
+
+// ─── 模块授权（Sprint 8）─────────────────────────────
+
+model Module {
+  id          String  @id @default(cuid())
+  code        String  @unique @db.VarChar(50)
+  name        String  @db.VarChar(100)
+  description String? @db.Text
+  phase       String? @db.VarChar(10)   // 二期 / 三期
+  isActive    Boolean @default(true)
+  createdAt   DateTime @default(now())
+
+  tenantModules TenantModule[]
+
+  @@map("modules")
+}
+
+model TenantModule {
+  id        String   @id @default(cuid())
+  tenantId  String
+  moduleId  String
+  expiredAt DateTime?
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  module Module @relation(fields: [moduleId], references: [id])
+
+  @@unique([tenantId, moduleId])
+  @@map("tenant_modules")
+}

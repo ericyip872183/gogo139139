@@ -1,0 +1,14 @@
+{
+  "name": "hardware-bridge",
+  "version": "0.0.1",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/web-bluetooth": "^0.0.20",
+    "@types/w3c-web-serial": "^1.0.6"
+  }
+}
