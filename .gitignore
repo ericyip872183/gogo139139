@@ -3,3 +3,10 @@ dist/
 .env
 *.local
 .DS_Store
+
+# 敏感信息文件，禁止提交
+*密钥*
+*KEY*.txt
+*key*.txt
+*secret*.txt
+*password*.txt
