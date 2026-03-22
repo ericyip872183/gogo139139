@@ -8,7 +8,12 @@
       "Bash(pnpm add:*)",
       "Bash(scp -i C:/Users/23791/.ssh/id_rsa \"c:/项目/panlei/packages/backend/dist/modules/auth/auth.service.js\" \"c:/项目/panlei/packages/backend/dist/modules/auth/auth.controller.js\" \"c:/项目/panlei/packages/backend/dist/modules/auth/auth.module.js\" \"c:/项目/panlei/packages/backend/dist/modules/auth/code.service.js\" root@120.77.144.5:/root/panlei/packages/backend/dist/modules/auth/)",
       "Bash(scp -i C:/Users/23791/.ssh/id_rsa \"c:/项目/panlei/packages/backend/dist/modules/auth/dto/login.dto.js\" root@120.77.144.5:/root/panlei/packages/backend/dist/modules/auth/dto/)",
-      "Bash(git tag:*)"
+      "Bash(git tag:*)",
+      "Bash(git stash:*)",
+      "Bash(rm -rf .git/refs/original)",
+      "Bash(git reflog:*)",
+      "Bash(git gc:*)",
+      "Bash(findstr \"密钥\")"
     ]
   }
 }
