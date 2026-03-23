@@ -25,4 +25,7 @@ export const adminApi = {
 
   // 统计
   getStats: () => request.get('/admin/stats'),
+
+  // 超管首页统计
+  getDashboardStats: () => request.get('/admin/dashboard/stats'),
 }

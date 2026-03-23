@@ -48,4 +48,9 @@ export const usersApi = {
   resetPassword: (id: string, password: string) =>
     request.patch(`/users/${id}/reset-password`, { password }),
   batchImport: (rows: any[]) => request.post('/users/import', { rows }),
+
+  // 个人中心
+  getMe: () => request.get<User>('/users/me'),
+  changePassword: (oldPassword: string, newPassword: string) =>
+    request.patch('/users/me/password', { oldPassword, newPassword }),
 }

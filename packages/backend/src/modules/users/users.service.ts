@@ -256,4 +256,40 @@ export class UsersService {
     if (!user) throw new NotFoundException('用户不存在')
     return user
   }
+
+  // ── 个人中心 ────────────────────────────────────
+
+  /**
+   * 获取当前用户完整信息（个人中心用）
+   */
+  async findMe(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        tenant: true,
+        userOrgs: { include: { organization: true } },
+      },
+    })
+    if (!user) throw new NotFoundException('用户不存在')
+    const { password, ...result } = user
+    return result
+  }
+
+  /**
+   * 修改密码
+   */
+  async changePassword(userId: string, oldPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } })
+    if (!user) throw new NotFoundException('用户不存在')
+
+    const valid = await bcrypt.compare(oldPassword, user.password)
+    if (!valid) throw new BadRequestException('原密码错误')
+
+    const hashed = await bcrypt.hash(newPassword, 10)
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashed },
+    })
+    return { message: '密码修改成功' }
+  }
 }

@@ -96,4 +96,25 @@ export class UsersController {
   ) {
     return this.service.remove(user.tenantId, id, user.role)
   }
+
+  // ── 个人中心 ────────────────────────────────────
+
+  /**
+   * 获取当前登录用户信息
+   */
+  @Get('me')
+  getMe(@CurrentUser() user: any) {
+    return this.service.findMe(user.id)
+  }
+
+  /**
+   * 修改当前用户密码
+   */
+  @Patch('me/password')
+  changePassword(
+    @CurrentUser() user: any,
+    @Body() body: { oldPassword: string; newPassword: string },
+  ) {
+    return this.service.changePassword(user.id, body.oldPassword, body.newPassword)
+  }
 }

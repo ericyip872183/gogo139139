@@ -106,6 +106,13 @@ const router = createRouter({
           component: () => import('@/views/my-exams/MyExamsView.vue'),
           meta: { title: '我的考试' },
         },
+        // 个人中心（所有角色）
+        {
+          path: 'profile',
+          name: 'Profile',
+          component: () => import('@/views/profile/ProfileView.vue'),
+          meta: { title: '个人中心' },
+        },
       ],
     },
 

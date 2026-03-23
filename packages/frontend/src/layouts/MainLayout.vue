@@ -102,6 +102,8 @@ function handleUserCommand(command: string) {
         router.push('/login')
       })
       .catch(() => {})
+  } else if (command === 'profile') {
+    router.push('/profile')
   }
 }
 </script>
@@ -123,5 +125,5 @@ function handleUserCommand(command: string) {
 .module-switch { cursor: pointer; }
 .user-info { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .user-name { font-size: 14px; color: #303133; }
-.main-content { background: #f5f7fa; }
+.main-content { background: #f5f7fa; overflow: hidden; display: flex; flex-direction: column; }
 </style>

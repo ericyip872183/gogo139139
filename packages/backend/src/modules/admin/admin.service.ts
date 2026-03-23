@@ -131,4 +131,114 @@ export class AdminService implements OnModuleInit {
       ])
     return { tenantCount, userCount, questionCount, examCount, scoreCount, recordCount }
   }
+
+  // ── 超管首页统计 ─────────────────────────────────
+
+  /**
+   * 获取超管首页统计数据
+   * 包含：机构与模块销售概览、用户统计、最近动态、到期预警
+   */
+  async getDashboardStats() {
+    const now = new Date()
+    const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+
+    // 基础统计
+    const [
+      tenantCount,
+      userCount,
+      tenantModuleCount,
+    ] = await Promise.all([
+      this.prisma.tenant.count(),
+      this.prisma.user.count(),
+      this.prisma.tenantModule.count(),
+    ])
+
+    // 用户按角色分布
+    const userByRole = await this.prisma.user.groupBy({
+      by: ['role'],
+      _count: true,
+    })
+
+    // 模块销售统计（每个模块售出给多少机构）
+    const moduleSalesRaw = await this.prisma.tenantModule.groupBy({
+      by: ['moduleId'],
+      _count: true,
+    })
+    const allModules = await this.prisma.module.findMany()
+    const moduleMap = new Map(allModules.map(m => [m.id, m.name]))
+
+    // 即将到期的机构（7 天内）
+    const expiringTenants = await this.prisma.tenantModule.findMany({
+      where: {
+        expiredAt: {
+          lte: sevenDaysLater,
+          gte: now,
+        },
+      },
+      include: {
+        tenant: true,
+        module: true,
+      },
+      orderBy: { expiredAt: 'asc' },
+      take: 10,
+    })
+
+    // 最近新增的机构（最近 30 天）
+    const recentTenants = await this.prisma.tenant.findMany({
+      where: {
+        createdAt: {
+          gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    })
+
+    // 最近授权记录
+    const recentGrants = await this.prisma.tenantModule.findMany({
+      where: {
+        createdAt: {
+          gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+        },
+      },
+      include: {
+        tenant: true,
+        module: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    })
+
+    return {
+      overview: {
+        tenantCount,
+        userCount,
+        moduleInstanceCount: tenantModuleCount, // 模块实例总数（售出份数）
+      },
+      userByRole: userByRole.reduce((acc, item) => {
+        acc[item.role] = item._count
+        return acc
+      }, {} as Record<string, number>),
+      moduleSales: moduleSalesRaw.map(item => ({
+        moduleId: item.moduleId,
+        moduleName: moduleMap.get(item.moduleId) || '未知模块',
+        soldCount: item._count,
+      })),
+      expiringTenants: expiringTenants.map(item => ({
+        tenantName: item.tenant.name,
+        moduleName: item.module?.name || '未知模块',
+        expiredAt: item.expiredAt,
+      })),
+      recentTenants: recentTenants.map(item => ({
+        name: item.name,
+        code: item.code,
+        createdAt: item.createdAt,
+      })),
+      recentGrants: recentGrants.map(item => ({
+        tenantName: item.tenant.name,
+        moduleName: item.module?.name || '未知模块',
+        createdAt: item.createdAt,
+      })),
+    }
+  }
 }

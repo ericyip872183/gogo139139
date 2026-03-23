@@ -92,4 +92,11 @@ export class AdminController {
     this.guard(u)
     return this.service.getStats()
   }
+
+  // ── 超管首页统计 ──
+  @Get('dashboard/stats')
+  getDashboardStats(@CurrentUser() u: any) {
+    this.guard(u)
+    return this.service.getDashboardStats()
+  }
 }

@@ -400,7 +400,32 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.admin-page { height: 100%; }
+.admin-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.admin-page :deep(.el-tabs) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.admin-page :deep(.el-tabs--border-card) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border: none;
+}
+.admin-page :deep(.el-tabs__content) {
+  flex: 1;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 16px;
+}
+.admin-page :deep(.el-tabs__header) {
+  flex-shrink: 0;
+}
 .tab-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; padding: 8px 0; }
 .stat-card { text-align: center; }
