@@ -13,7 +13,30 @@
       "Bash(rm -rf .git/refs/original)",
       "Bash(git reflog:*)",
       "Bash(git gc:*)",
-      "Bash(findstr \"密钥\")"
+      "Bash(findstr \"密钥\")",
+      "Read(//c/項目/panlei/packages/backend/src/modules/users/**)",
+      "Bash(pnpm dev:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(winget install:*)",
+      "Read(//c/Users/23791/Downloads/**)",
+      "Bash(powershell -Command \"Start-Process wsl_update_x64.msi -Verb RunAs\")",
+      "Bash(cmd.exe /c \"msiexec /i wsl_update_x64.msi\")",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":5173\")",
+      "Bash(findstr \":3000\")",
+      "Bash(docker-compose up:*)",
+      "Bash(findstr \":3306\")",
+      "Bash(findstr \":6379\")",
+      "Bash(findstr \"3306\\\\|6379\")",
+      "Bash(findstr \"LISTEN\")",
+      "Bash(powershell -Command \"Get-Service | Where-Object {$\\\\_.DisplayName -like ''*mysql*'' -or $\\\\_.DisplayName -like ''*redis*''}\")",
+      "Bash(sc query:*)",
+      "Bash(findstr /i \"mysql redis\")",
+      "Bash(powershell -Command \"Get-Service -Name ''MySQL*'' , ''Redis*'' 2>&1 | Select-Object Name, Status, DisplayName\")",
+      "Bash(powershell -Command \"Stop-Service -Name ''MySQL*'' -Force\")",
+      "Bash(pnpm db:migrate)",
+      "Bash(docker exec:*)",
+      "Bash(powershell -Command \"Get-Service | Where-Object { $_Status -eq ''Running'' } | Where-Object { \\(Get-Process -Id \\(Get-WmiObject Win32_Service | Where-Object { $_Name -eq $_Name }\\).ProcessId -ErrorAction SilentlyContinue\\) } ; taskkill /PID 19044 /F\")"
     ]
   }
 }
