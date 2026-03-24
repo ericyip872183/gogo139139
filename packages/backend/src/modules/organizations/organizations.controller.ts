@@ -25,7 +25,7 @@ export class OrganizationsController {
   }
 
   @Post()
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   create(
     @CurrentUser() user: { tenantId: string },
     @Body() dto: CreateOrganizationDto,
@@ -34,7 +34,7 @@ export class OrganizationsController {
   }
 
   @Patch(':id')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   update(
     @CurrentUser() user: { tenantId: string },
     @Param('id') id: string,
@@ -44,7 +44,7 @@ export class OrganizationsController {
   }
 
   @Delete(':id')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   remove(
     @CurrentUser() user: { tenantId: string },
     @Param('id') id: string,

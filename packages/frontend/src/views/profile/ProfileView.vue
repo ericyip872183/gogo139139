@@ -17,7 +17,7 @@
               <el-avatar :size="100" :src="userInfo?.avatar">
                 <span>{{ userInfo?.realName?.charAt(0) || '用' }}</span>
               </el-avatar>
-              <el-button link type="primary" style="margin-top: 12px">
+              <el-button link type="primary" style="margin-top: 12px" @click="handleAvatarUpdate">
                 更换头像
               </el-button>
             </div>
@@ -30,17 +30,22 @@
                 </el-col>
                 <el-col :span="12">
                   <el-form-item label="真实姓名">
-                    <el-input v-model="userInfo.realName" @change="handleUpdate" />
+                    <el-input v-model="userInfo.realName" placeholder="请输入真实姓名" />
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
                   <el-form-item label="手机号">
-                    <el-input v-model="userInfo.phone" placeholder="请输入手机号" @change="handleUpdate" />
+                    <el-input v-model="userInfo.phone" placeholder="请输入手机号" />
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
                   <el-form-item label="邮箱">
-                    <el-input v-model="userInfo.email" placeholder="请输入邮箱" @change="handleUpdate" />
+                    <el-input v-model="userInfo.email" placeholder="请输入邮箱" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="学号/工号">
+                    <el-input v-model="userInfo.studentNo" placeholder="请输入学号或工号" />
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
@@ -51,6 +56,13 @@
                 <el-col :span="12">
                   <el-form-item label="角色">
                     <el-tag :type="roleTagType">{{ roleLabel }}</el-tag>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="24">
+                  <el-form-item>
+                    <el-button type="primary" :loading="saving" @click="handleSaveUserInfo">
+                      保存修改
+                    </el-button>
                   </el-form-item>
                 </el-col>
               </el-row>
@@ -201,9 +213,12 @@ const userInfo = ref({
   phone: '',
   email: '',
   avatar: '',
+  studentNo: '',
   tenantName: '',
   role: '',
 })
+
+const saving = ref(false)
 
 // 修改密码表单
 const passwordFormRef = ref<FormInstance>()
@@ -239,6 +254,7 @@ const roleLabel = computed(() => {
   const map: Record<string, string> = {
     SUPER_ADMIN: '超级管理员',
     TENANT_ADMIN: '机构管理员',
+    CLASS_ADMIN: '班级管理员',
     TEACHER: '教师',
     STUDENT: '学生',
   }
@@ -248,9 +264,10 @@ const roleLabel = computed(() => {
 const roleTagType = computed(() => {
   const map: Record<string, any> = {
     SUPER_ADMIN: 'danger',
-    TENANT_ADMIN: 'warning',
-    TEACHER: 'success',
-    STUDENT: 'primary',
+    TENANT_ADMIN: 'primary',
+    CLASS_ADMIN: 'success',
+    TEACHER: '',
+    STUDENT: 'info',
   }
   return map[user.value?.role ?? ''] || 'info'
 })
@@ -289,6 +306,7 @@ async function fetchUserInfo() {
       phone: data.phone || '',
       email: data.email || '',
       avatar: data.avatar || '',
+      studentNo: data.studentNo || '',
       tenantName: data.tenant?.name || '',
       role: data.role,
     }
@@ -297,9 +315,55 @@ async function fetchUserInfo() {
   }
 }
 
-// 更新用户信息
+// 更换头像（模拟）
+function handleAvatarUpdate() {
+  ElMessageBox.prompt('请输入头像 URL', '更换头像', {
+    type: 'info',
+    inputPattern: /^https?:\/\/.+/,
+    inputErrorMessage: '请输入有效的 URL',
+  }).then(({ value }) => {
+    userInfo.value.avatar = value
+    handleSaveUserInfo()
+  }).catch(() => {})
+}
+
+// 保存用户信息
+async function handleSaveUserInfo() {
+  if (!userInfo.value.realName || !userInfo.value.realName.trim()) {
+    ElMessage.warning('真实姓名不能为空')
+    return
+  }
+  if (userInfo.value.phone && !/^1[3-9]\d{9}$/.test(userInfo.value.phone)) {
+    ElMessage.warning('手机号格式不正确')
+    return
+  }
+  if (userInfo.value.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userInfo.value.email)) {
+    ElMessage.warning('邮箱格式不正确')
+    return
+  }
+
+  saving.value = true
+  try {
+    await usersApi.update(userInfo.value.id, {
+      realName: userInfo.value.realName,
+      phone: userInfo.value.phone,
+      email: userInfo.value.email,
+      studentNo: userInfo.value.studentNo,
+      avatar: userInfo.value.avatar,
+    })
+    ElMessage.success('保存成功')
+    // 更新 auth store 中的用户信息
+    auth.user = { ...auth.user, ...userInfo.value }
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.message || '保存失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+// 更新用户信息（旧函数，保留兼容）
 async function handleUpdate() {
-  // TODO: 调用更新接口
+  // 已废弃，使用 handleSaveUserInfo
 }
 
 // 修改密码

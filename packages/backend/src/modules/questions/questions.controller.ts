@@ -32,7 +32,7 @@ export class QuestionsController {
   }
 
   @Post('categories')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   createCategory(
     @CurrentUser() user: { tenantId: string },
     @Body() dto: CreateCategoryDto,
@@ -41,7 +41,7 @@ export class QuestionsController {
   }
 
   @Patch('categories/:id')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   updateCategory(
     @CurrentUser() user: { tenantId: string },
     @Param('id') id: string,
@@ -51,7 +51,7 @@ export class QuestionsController {
   }
 
   @Delete('categories/:id')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   removeCategory(
     @CurrentUser() user: { tenantId: string },
     @Param('id') id: string,
@@ -78,7 +78,7 @@ export class QuestionsController {
   }
 
   @Post()
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   create(
     @CurrentUser() user: { tenantId: string },
     @Body() dto: CreateQuestionDto,
@@ -87,7 +87,7 @@ export class QuestionsController {
   }
 
   @Post('import')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   batchImport(
     @CurrentUser() user: { tenantId: string },
     @Body() body: { rows: ImportQuestionDto[] },
@@ -96,7 +96,7 @@ export class QuestionsController {
   }
 
   @Post('import-excel')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   @UseInterceptors(FileInterceptor('file'))
   importExcel(
     @CurrentUser() user: { tenantId: string },
@@ -107,7 +107,7 @@ export class QuestionsController {
   }
 
   @Get('export')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   async exportExcel(
     @CurrentUser() user: { tenantId: string },
     @Query() query: QueryQuestionDto,
@@ -121,7 +121,7 @@ export class QuestionsController {
   }
 
   @Patch(':id')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   update(
     @CurrentUser() user: { tenantId: string },
     @Param('id') id: string,
@@ -131,7 +131,7 @@ export class QuestionsController {
   }
 
   @Delete('batch')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   batchRemove(
     @CurrentUser() user: { tenantId: string },
     @Body() body: { ids: string[] },
@@ -140,7 +140,7 @@ export class QuestionsController {
   }
 
   @Delete(':id')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   remove(
     @CurrentUser() user: { tenantId: string },
     @Param('id') id: string,

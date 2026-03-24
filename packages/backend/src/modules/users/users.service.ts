@@ -15,10 +15,9 @@ import { UserRole } from '@prisma/client'
 
 // 角色层级：数字越大权限越高
 const ROLE_LEVEL: Record<UserRole, number> = {
-  SUPER_ADMIN: 6,
-  TENANT_ADMIN: 5,
-  SCHOOL: 4,
-  CLASS: 3,
+  SUPER_ADMIN: 5,
+  TENANT_ADMIN: 4,
+  CLASS_ADMIN: 3,
   TEACHER: 2,
   STUDENT: 1,
 }
@@ -27,12 +26,15 @@ const ROLE_LEVEL: Record<UserRole, number> = {
 export class UsersService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(tenantId: string, query: QueryUserDto, callerRole: UserRole) {
+  async findAll(tenantId: string, query: QueryUserDto, callerRole: UserRole, includeDeleted = false) {
     const page = query.page ?? 1
     const pageSize = query.pageSize ?? 20
     const skip = (page - 1) * pageSize
 
-    const where: any = { tenantId }
+    const where: any = { tenantId, isDeleted: includeDeleted ? true : false }
+    if (!includeDeleted) {
+      where.isDeleted = false
+    }
     // 非超管、非机构管理员：只能看到比自己层级低的用户
     if (callerRole !== UserRole.SUPER_ADMIN && callerRole !== UserRole.TENANT_ADMIN) {
       const callerLevel = ROLE_LEVEL[callerRole]
@@ -70,6 +72,9 @@ export class UsersService {
           phone: true,
           email: true,
           isActive: true,
+          isDeleted: true,
+          deletedAt: true,
+          deletedBy: true,
           createdAt: true,
           userOrgs: {
             select: {
@@ -173,21 +178,58 @@ export class UsersService {
     })
   }
 
-  async remove(tenantId: string, id: string, callerRole: UserRole) {
+  async remove(tenantId: string, id: string, callerRole: UserRole, operatorId?: string) {
     const target = await this._findOrFail(tenantId, id)
     if (ROLE_LEVEL[target.role] >= ROLE_LEVEL[callerRole]) {
       throw new ForbiddenException('无权删除同级或更高级别用户')
     }
+    // 软删除：标记 isDeleted，保留数据
     return this.prisma.user.update({
       where: { id },
-      data: { isActive: false },
+      data: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: operatorId,
+        isActive: false,
+      },
     })
   }
 
-  async batchRemove(tenantId: string, ids: string[]) {
+  async batchRemove(tenantId: string, ids: string[], operatorId?: string) {
     return this.prisma.user.updateMany({
       where: { id: { in: ids }, tenantId },
-      data: { isActive: false },
+      data: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: operatorId,
+        isActive: false,
+      },
+    })
+  }
+
+  /**
+   * 恢复已删除用户
+   */
+  async restore(tenantId: string, id: string, callerRole: UserRole) {
+    const target = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, role: true, username: true, isDeleted: true },
+    })
+    if (!target) throw new NotFoundException('用户不存在')
+    if (!target.isDeleted) {
+      throw new BadRequestException('该用户未被删除')
+    }
+    if (ROLE_LEVEL[target.role] >= ROLE_LEVEL[callerRole]) {
+      throw new ForbiddenException('无权恢复同级或更高级别用户')
+    }
+    return this.prisma.user.update({
+      where: { id },
+      data: {
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null,
+        isActive: true,
+      },
     })
   }
 
@@ -299,8 +341,8 @@ export class UsersService {
     ]
 
     const roleMap: Record<string, string> = {
-      SUPER_ADMIN: '超级管理员', TENANT_ADMIN: '机构管理员', SCHOOL: '学校管理员',
-      CLASS: '班级管理员', TEACHER: '教师', STUDENT: '学生',
+      SUPER_ADMIN: '超级管理员', TENANT_ADMIN: '机构管理员', CLASS_ADMIN: '班级管理员',
+      TEACHER: '教师', STUDENT: '学生',
     }
 
     for (const u of list as any[]) {
@@ -341,8 +383,8 @@ export class UsersService {
       '角色': 'role', '学号': 'studentNo', '手机': 'phone', '组织': 'organizationName',
     }
     const roleReverseMap: Record<string, string> = {
-      '超级管理员': 'SUPER_ADMIN', '机构管理员': 'TENANT_ADMIN', '学校管理员': 'SCHOOL',
-      '班级管理员': 'CLASS', '教师': 'TEACHER', '学生': 'STUDENT',
+      '超级管理员': 'SUPER_ADMIN', '机构管理员': 'TENANT_ADMIN',
+      '班级管理员': 'CLASS_ADMIN', '教师': 'TEACHER', '学生': 'STUDENT',
     }
 
     sheet.eachRow((row: any, rowNumber: number) => {
@@ -434,5 +476,83 @@ export class UsersService {
     }
 
     return this.prisma.user.delete({ where: { id } })
+  }
+
+  // ── 已删除用户管理 ────────────────────────────────────
+
+  /**
+   * 获取已删除用户列表
+   */
+  async findDeleted(tenantId: string, query: QueryUserDto, callerRole: UserRole) {
+    const page = query.page ?? 1
+    const pageSize = query.pageSize ?? 20
+    const skip = (page - 1) * pageSize
+
+    const where: any = { tenantId, isDeleted: true }
+    // 非超管、非机构管理员：只能看到比自己层级低的已删除用户
+    if (callerRole !== UserRole.SUPER_ADMIN && callerRole !== UserRole.TENANT_ADMIN) {
+      const callerLevel = ROLE_LEVEL[callerRole]
+      const visibleRoles = (Object.keys(ROLE_LEVEL) as UserRole[]).filter(
+        r => ROLE_LEVEL[r] < callerLevel,
+      )
+      where.role = { in: visibleRoles }
+    }
+    if (query.keyword) {
+      where.OR = [
+        { username: { contains: query.keyword } },
+        { realName: { contains: query.keyword } },
+        { studentNo: { contains: query.keyword } },
+        { phone: { contains: query.keyword } },
+      ]
+    }
+    if (query.role) where.role = query.role
+
+    const [total, list] = await Promise.all([
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: { deletedAt: 'desc' },
+        select: {
+          id: true,
+          username: true,
+          realName: true,
+          role: true,
+          studentNo: true,
+          phone: true,
+          email: true,
+          deletedAt: true,
+          deletedBy: true,
+          createdAt: true,
+          userOrgs: {
+            select: {
+              organization: { select: { id: true, name: true, level: true } },
+            },
+          },
+        },
+      }),
+    ])
+
+    return { total, list, page, pageSize }
+  }
+
+  /**
+   * 获取用户关联数据统计（用于删除前提示）
+   */
+  async getUserStats(userId: string) {
+    const [examAnswersCount, examParticipantsCount, scoreRecordsCount, asJudgeCount] = await Promise.all([
+      this.prisma.examAnswer.count({ where: { userId } }),
+      this.prisma.examParticipant.count({ where: { userId } }),
+      this.prisma.scoreRecord.count({ where: { targetId: userId } }),
+      this.prisma.scoreRecord.count({ where: { judgeId: userId } }),
+    ])
+
+    return {
+      examAnswers: examAnswersCount,
+      examParticipants: examParticipantsCount,
+      scoreRecords: scoreRecordsCount,
+      asJudge: asJudgeCount,
+    }
   }
 }

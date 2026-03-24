@@ -27,37 +27,37 @@ export class ExamsController {
   }
 
   @Get(':id/participants')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   getParticipants(@CurrentUser() user: { tenantId: string }, @Param('id') id: string) {
     return this.service.getParticipants(user.tenantId, id)
   }
 
   @Post()
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   create(@CurrentUser() user: { tenantId: string }, @Body() dto: CreateExamDto) {
     return this.service.create(user.tenantId, dto)
   }
 
   @Post(':id/publish')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   publish(@CurrentUser() user: { tenantId: string }, @Param('id') id: string) {
     return this.service.publish(user.tenantId, id)
   }
 
   @Post(':id/cancel')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   cancel(@CurrentUser() user: { tenantId: string }, @Param('id') id: string) {
     return this.service.cancel(user.tenantId, id)
   }
 
   @Post(':id/clone')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   clone(@CurrentUser() user: { tenantId: string }, @Param('id') id: string) {
     return this.service.clone(user.tenantId, id)
   }
 
   @Post(':id/participants')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   addParticipants(
     @CurrentUser() user: { tenantId: string },
     @Param('id') id: string,
@@ -67,13 +67,13 @@ export class ExamsController {
   }
 
   @Patch(':id')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   update(@CurrentUser() user: { tenantId: string }, @Param('id') id: string, @Body() dto: UpdateExamDto) {
     return this.service.update(user.tenantId, id, dto)
   }
 
   @Delete(':id/participants/:userId')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   removeParticipant(
     @CurrentUser() user: { tenantId: string },
     @Param('id') id: string,

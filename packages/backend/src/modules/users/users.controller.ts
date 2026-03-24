@@ -16,9 +16,9 @@ import { RolesGuard } from '../../common/guards/roles.guard'
 import { UserRole } from '@prisma/client'
 
 // 所有管理操作：TEACHER 及以上（均可管理低于自身层级的用户）
-const MANAGE_ROLES = ['TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN'] as const
+const MANAGE_ROLES = ['TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN'] as const
 // 查看操作：TEACHER 及以上均可
-const VIEW_ROLES = ['TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN'] as const
+const VIEW_ROLES = ['TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN'] as const
 
 @Controller('users')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
@@ -165,5 +165,33 @@ export class UsersController {
     @Param('id') id: string,
   ) {
     return this.service.forceDelete(user.tenantId, id, user.role)
+  }
+
+  // ── 已删除用户管理 ────────────────────────────────────
+
+  @Get('deleted/list')
+  @Roles(...MANAGE_ROLES)
+  findDeleted(
+    @CurrentUser() user: { tenantId: string; role: UserRole },
+    @Query() query: QueryUserDto,
+  ) {
+    return this.service.findDeleted(user.tenantId, query, user.role)
+  }
+
+  @Post(':id/restore')
+  @Roles(...MANAGE_ROLES)
+  restore(
+    @CurrentUser() user: { tenantId: string; role: UserRole },
+    @Param('id') id: string,
+  ) {
+    return this.service.restore(user.tenantId, id, user.role)
+  }
+
+  @Get(':id/stats')
+  @Roles(...MANAGE_ROLES)
+  getUserStats(
+    @Param('id') id: string,
+  ) {
+    return this.service.getUserStats(id)
   }
 }

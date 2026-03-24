@@ -66,7 +66,7 @@
 
 **操作列功能**：
 - 编辑信息
-- 修改角色（下拉框：TENANT_ADMIN / TEACHER / STUDENT / SCHOOL / CLASS）
+- 修改角色（下拉框：TENANT_ADMIN / CLASS_ADMIN / TEACHER / STUDENT）
 - 重置密码
 - 删除
 - 启用/禁用
@@ -343,4 +343,4 @@ export const adminApi = {
 - [x] 角色标签和文本映射工具函数
 
 ### 前端（MainLayout）
-- [x] 机构管理员和学校管理员可见「组织架构」和「用户管理」菜单
+- [x] 机构管理员和班级管理员可见「组织架构」和「用户管理」菜单

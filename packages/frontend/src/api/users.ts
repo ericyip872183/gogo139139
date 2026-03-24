@@ -1,6 +1,6 @@
 import request from './request'
 
-export type UserRole = 'SUPER_ADMIN' | 'TENANT_ADMIN' | 'TEACHER' | 'STUDENT'
+export type UserRole = 'SUPER_ADMIN' | 'TENANT_ADMIN' | 'CLASS_ADMIN' | 'TEACHER' | 'STUDENT'
 
 export interface User {
   id: string
@@ -11,6 +11,9 @@ export interface User {
   phone?: string
   email?: string
   isActive: boolean
+  isDeleted?: boolean
+  deletedAt?: string
+  deletedBy?: string
   createdAt: string
   userOrgs: { organization: { id: string; name: string; level: number } }[]
 }
@@ -31,6 +34,7 @@ export interface CreateUserPayload {
   studentNo?: string
   phone?: string
   email?: string
+  avatar?: string
   organizationId?: string
 }
 
@@ -77,4 +81,15 @@ export const usersApi = {
   getMe: () => request.get<User>('/users/me'),
   changePassword: (oldPassword: string, newPassword: string) =>
     request.patch('/users/me/password', { oldPassword, newPassword }),
+
+  // 已删除用户管理
+  getDeleted: (query?: UserQuery) =>
+    request.get<{ total: number; list: User[]; page: number; pageSize: number }>('/users/deleted/list', {
+      params: query,
+    }),
+  restore: (id: string) => request.post(`/users/${id}/restore`),
+
+  // 获取用户关联数据统计
+  getUserStats: (id: string) =>
+    request.get<{ examAnswers: number; examParticipants: number; scoreRecords: number; scores: number }>(`/users/${id}/stats`),
 }

@@ -88,7 +88,7 @@ export class ScoreTablesController {
 
   // 将评分表转换为考题
   @Post(':id/convert-to-questions')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   convertToQuestions(
     @CurrentUser() user: { id: string; tenantId: string },
     @Param('id') tableId: string,
@@ -98,7 +98,7 @@ export class ScoreTablesController {
 
   // 导出评分记录
   @Get(':id/records/export')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   async exportRecords(
     @CurrentUser() user: { tenantId: string },
     @Param('id') tableId: string,
@@ -113,7 +113,7 @@ export class ScoreTablesController {
 
   // Excel 导入评分表
   @Post('import-excel')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   @UseInterceptors(FileInterceptor('file'))
   importExcel(
     @CurrentUser() user: { tenantId: string },

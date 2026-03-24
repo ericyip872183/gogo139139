@@ -42,12 +42,11 @@ model Tenant {
 // ─── 用户 ─────────────────────────────────────────────
 
 enum UserRole {
-  SUPER_ADMIN   // 超级管理员（平台方，唯一）
-  TENANT_ADMIN  // 机构管理员（每机构唯一）
-  SCHOOL        // 学校管理员
-  CLASS         // 班级管理员
-  TEACHER       // 教师
-  STUDENT       // 学生
+  SUPER_ADMIN      // 超级管理员（平台方，唯一）
+  TENANT_ADMIN     // 机构管理员（每机构唯一）
+  CLASS_ADMIN      // 班级管理员（原 CLASS）
+  TEACHER          // 教师
+  STUDENT          // 学生
 }
 
 model User {
@@ -62,6 +61,9 @@ model User {
   email        String?   @db.VarChar(100)
   avatar       String?   @db.VarChar(500)
   isActive     Boolean   @default(true)
+  isDeleted    Boolean   @default(false)       // 【新增】软删除标记
+  deletedAt    DateTime?                       // 【新增】删除时间
+  deletedBy    String?   @db.VarChar(191)      // 【新增】删除人 ID
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -76,6 +78,8 @@ model User {
 
   @@unique([tenantId, username])
   @@index([tenantId])
+  @@index([tenantId, isDeleted])
+  @@index([deletedAt])
   @@map("users")
 }
 
@@ -407,8 +411,13 @@ model AiUsage {
   id          String   @id @default(cuid())
   tenantId    String
   userId      String
+  providerId  String   @db.VarChar(100)
+  modelId     String   @db.VarChar(200)
   module      String   @db.VarChar(50)
+  action      String   @db.VarChar(50)
   tokensUsed  Int      @default(0)
+  inputTokens Int      @default(0)
+  outputTokens Int     @default(0)
   cost        Float    @default(0)
   request     String   @db.Text
   response    String?  @db.Text
@@ -420,12 +429,14 @@ model AiUsage {
   @@index([tenantId])
   @@index([userId])
   @@index([module])
+  @@index([providerId])
   @@map("ai_usage")
 }
 
 model AiRecharge {
   id          String   @id @default(cuid())
   tenantId    String
+  providerId  String   @db.VarChar(100)
   amount      Float
   tokens      Int
   status      String   @default("pending") @db.VarChar(20)
@@ -436,6 +447,7 @@ model AiRecharge {
   updatedAt   DateTime @updatedAt
 
   @@index([tenantId])
+  @@index([providerId])
   @@index([orderNo])
   @@map("ai_recharge")
 }
@@ -449,10 +461,107 @@ model AiConfig {
   model       String   @default("doubao-lite-4k") @db.VarChar(50)
   maxTokens   Int      @default(2000)
   isEnabled   Boolean  @default(true)
+  systemPrompt String? @db.Text
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@map("ai_config")
+}
+
+// ─── AI 大模型配置（多服务商）─────────────────────────────
+
+// AI 服务商（超管管理）
+model AiProvider {
+  id          String   @id @default(cuid())
+  name        String   @db.VarChar(100)
+  baseUrl     String   @db.VarChar(300)
+  authType    String   @default("Bearer") @db.VarChar(50)
+  apiKey      String   @db.VarChar(500)
+  apiSecret   String?  @db.VarChar(500)
+  isEnabled   Boolean  @default(false)
+  config      Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  models      AiModel[]
+  quotas      TenantAiQuota[]
+
+  @@map("ai_providers")
+}
+
+// AI 模型（全局模型池）
+model AiModel {
+  id          String   @id @default(cuid())
+  providerId  String
+  name        String   @db.VarChar(100)
+  modelId     String   @db.VarChar(200)
+  isEp        Boolean  @default(false)
+  inputPrice  Decimal  @default(0) @db.Decimal(10, 6)
+  outputPrice Decimal  @default(0) @db.Decimal(10, 6)
+  isEnabled   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  // 关联
+  provider    AiProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  tenantModels TenantAiModel[]
+
+  @@index([providerId])
+  @@map("ai_models")
+}
+
+// 机构 AI 配额
+model TenantAiQuota {
+  id              String   @id @default(cuid())
+  tenantId        String
+  providerId      String
+  totalQuota      Int      @default(0)
+  usedQuota       Int      @default(0)
+  alertThreshold  Int      @default(20)
+  isEnabled       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // 关联
+  provider        AiProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, providerId])
+  @@index([tenantId])
+  @@map("tenant_ai_quotas")
+}
+
+// 机构 - 模型配置（超管为每个机构设置）
+model TenantAiModel {
+  id          String   @id @default(cuid())
+  tenantId    String
+  providerId  String
+  modelId     String
+  scene       String   @db.VarChar(50)
+  isDefault   Boolean  @default(false)
+  isEnabled   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  // 关联
+  model       AiModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, providerId, modelId, scene])
+  @@index([tenantId, scene])
+  @@map("tenant_ai_models")
+}
+
+// AI 预警记录
+model AiAlert {
+  id              String   @id @default(cuid())
+  tenantId        String
+  providerId      String
+  remainingPercent Int
+  status          String   @default("pending") @db.VarChar(20)
+  notifiedAt      DateTime?
+  resolvedAt      DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, status])
+  @@map("ai_alerts")
 }
 
 // ─── 超管操作日志（Admin）─────────────────────────────

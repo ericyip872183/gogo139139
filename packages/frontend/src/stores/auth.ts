@@ -23,13 +23,13 @@ export const useAuthStore = defineStore('auth', () => {
   // 管理类角色：有权访问管理功能菜单
   const isTeacher = computed(() => {
     const r = user.value?.role
-    return r === 'TEACHER' || r === 'TENANT_ADMIN' || r === 'SCHOOL' || r === 'CLASS' || r === 'SUPER_ADMIN'
+    return r === 'TEACHER' || r === 'TENANT_ADMIN' || r === 'CLASS_ADMIN' || r === 'SUPER_ADMIN'
   })
   const isSuperAdmin = computed(() => user.value?.role === 'SUPER_ADMIN')
   // 是否有用户管理权（TENANT_ADMIN 及以上）
   const canManageUsers = computed(() => {
     const r = user.value?.role
-    return r === 'SUPER_ADMIN' || r === 'TENANT_ADMIN' || r === 'SCHOOL' || r === 'CLASS'
+    return r === 'SUPER_ADMIN' || r === 'TENANT_ADMIN' || r === 'CLASS_ADMIN'
   })
 
   async function loadMyModules() {

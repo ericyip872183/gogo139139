@@ -65,7 +65,12 @@
               批量重置密码 ({{ selectedIds.length }})
             </el-button>
           </div>
-          <span class="total">共 {{ total }} 条</span>
+          <div class="right">
+            <el-button :type="showDeleted ? 'primary' : ''" @click="toggleDeletedList">
+              {{ showDeleted ? '返回正常列表' : '查看已删除用户' }}
+            </el-button>
+            <span class="total">共 {{ total }} 条</span>
+          </div>
         </div>
       </template>
 
@@ -97,16 +102,26 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column v-if="showDeleted" label="删除时间" width="160">
+          <template #default="{ row }">
+            {{ row.deletedAt ? new Date(row.deletedAt).toLocaleString() : '-' }}
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
             <el-button link type="warning" size="small" @click="openResetPwd(row)">重置密码</el-button>
-            <template v-if="row.isActive">
-              <el-button link type="danger" size="small" @click="handleRemove(row)">禁用</el-button>
+            <template v-if="!showDeleted">
+              <template v-if="row.isActive">
+                <el-button link type="danger" size="small" @click="handleRemove(row)">禁用</el-button>
+              </template>
+              <template v-else>
+                <el-button link type="success" size="small" @click="handleRestore(row)">恢复</el-button>
+                <el-button link type="danger" size="small" @click="handleForceDelete(row)">彻底删除</el-button>
+              </template>
             </template>
             <template v-else>
-              <el-button link type="success" size="small" @click="handleRestore(row)">恢复</el-button>
-              <el-button link type="danger" size="small" @click="handleForceDelete(row)">彻底删除</el-button>
+              <el-button link type="success" size="small" @click="handleRestoreDeleted(row)">恢复</el-button>
             </template>
           </template>
         </el-table-column>
@@ -223,6 +238,48 @@
         <el-button type="primary" :loading="submitting" @click="handleBatchResetPwd">确定</el-button>
       </template>
     </el-dialog>
+
+    <!-- 删除确认弹窗 -->
+    <el-dialog
+      v-model="deleteConfirmVisible"
+      title="⚠️ 确认删除用户？"
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <div class="delete-confirm-content">
+        <div class="user-info">
+          <p><strong>用户：</strong>{{ deleteTarget?.realName }} ({{ deleteTarget?.username }})</p>
+          <p><strong>角色：</strong>{{ roleLabel(deleteTarget?.role || '') }}</p>
+          <p><strong>所属组织：</strong>{{ deleteUserOrgs.value }}</p>
+        </div>
+        <el-divider />
+        <div class="warning-text">
+          <el-alert
+            title="删除后以下资料将被标记为删除"
+            type="warning"
+            show-icon
+            :closable="false"
+          />
+          <ul v-if="userStats" class="stats-list">
+            <li>参与的考试记录：{{ userStats.examParticipants }} 条</li>
+            <li>考试成绩：{{ userStats.scores }} 条</li>
+            <li>答题记录：{{ userStats.examAnswers }} 条</li>
+            <li>评分记录：{{ userStats.scoreRecords }} 条</li>
+          </ul>
+          <p class="tip-note">💡 软删除后可在「已删除用户」中恢复</p>
+        </div>
+        <div class="delete-options">
+          <el-radio-group v-model="deleteOption" size="large">
+            <el-radio :label="false">仅软删除（可恢复）</el-radio>
+            <el-radio :label="true" style="color: #f56c6c;">同时删除关联资料（推荐，不可恢复）</el-radio>
+          </el-radio-group>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="deleteConfirmVisible = false">取消</el-button>
+        <el-button type="danger" :loading="deleting" @click="confirmDelete">确认删除</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -236,6 +293,19 @@ import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 
+// ── 显示已删除用户列表切换 ──────────────────────────────────
+const showDeleted = ref(false)
+
+async function toggleDeletedList() {
+  showDeleted.value = !showDeleted.value
+  query.page = 1
+  if (showDeleted.value) {
+    await loadDeletedUsers()
+  } else {
+    await loadUsers()
+  }
+}
+
 // ── 搜索/列表 ─────────────────────────────────────────────
 const loading = ref(false)
 const userList = ref<User[]>([])
@@ -247,14 +317,13 @@ const orgList = ref<{ id: string; name: string; level: number }[]>([])
 
 // 角色层级（数字越大权限越高）
 const ROLE_LEVEL: Record<string, number> = {
-  SUPER_ADMIN: 6, TENANT_ADMIN: 5, SCHOOL: 4, CLASS: 3, TEACHER: 2, STUDENT: 1,
+  SUPER_ADMIN: 5, TENANT_ADMIN: 4, CLASS_ADMIN: 3, TEACHER: 2, STUDENT: 1,
 }
 // 所有角色定义
 const ALL_ROLES = [
   { label: '超级管理员', value: 'SUPER_ADMIN' },
   { label: '机构管理员', value: 'TENANT_ADMIN' },
-  { label: '学校管理员', value: 'SCHOOL' },
-  { label: '班级管理员', value: 'CLASS' },
+  { label: '班级管理员', value: 'CLASS_ADMIN' },
   { label: '教师', value: 'TEACHER' },
   { label: '学生', value: 'STUDENT' },
 ]
@@ -264,12 +333,12 @@ const roleOptions = computed(() => {
   return ALL_ROLES.filter(r => ROLE_LEVEL[r.value] < myLevel)
 })
 const roleMap: Record<string, string> = {
-  SUPER_ADMIN: '超级管理员', TENANT_ADMIN: '机构管理员', SCHOOL: '学校管理员',
-  CLASS: '班级管理员', TEACHER: '教师', STUDENT: '学生',
+  SUPER_ADMIN: '超级管理员', TENANT_ADMIN: '机构管理员', CLASS_ADMIN: '班级管理员',
+  TEACHER: '教师', STUDENT: '学生',
 }
 const roleTagMap: Record<string, string> = {
-  SUPER_ADMIN: 'danger', TENANT_ADMIN: 'warning', SCHOOL: 'warning',
-  CLASS: 'info', TEACHER: 'success', STUDENT: '',
+  SUPER_ADMIN: 'danger', TENANT_ADMIN: 'warning', CLASS_ADMIN: 'info',
+  TEACHER: 'success', STUDENT: '',
 }
 const roleLabel = (role: string) => roleMap[role] ?? role
 const roleTagType = (role: string) => roleTagMap[role] as any ?? ''
@@ -278,6 +347,17 @@ async function loadUsers() {
   loading.value = true
   try {
     const res = await usersApi.list(query) as any
+    userList.value = res.list
+    total.value = res.total
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadDeletedUsers() {
+  loading.value = true
+  try {
+    const res = await usersApi.getDeleted(query) as any
     userList.value = res.list
     total.value = res.total
   } finally {
@@ -370,17 +450,30 @@ async function handleExport() {
 }
 
 async function handleRemove(row: User) {
-  await ElMessageBox.confirm(`确定禁用用户「${row.realName}」吗？禁用后该用户无法登录，但数据保留。`, '提示', { type: 'warning' })
-  await usersApi.update(row.id, { isActive: false })
-  ElMessage.success('已禁用')
-  await loadUsers()
+  deleteTarget.value = row
+  deleteUserOrgs.value = row.userOrgs.map((o: any) => o.organization.name).join('、') || '—'
+  deleteOption.value = false
+  deleteConfirmVisible.value = true
+  // 加载用户统计数据
+  try {
+    userStats.value = await usersApi.getUserStats(row.id)
+  } catch {
+    userStats.value = null
+  }
 }
 
 async function handleRestore(row: User) {
   await ElMessageBox.confirm(`确定恢复用户「${row.realName}」吗？`, '提示', { type: 'warning' })
-  await usersApi.update(row.id, { isActive: true })
+  await usersApi.restore(row.id)
   ElMessage.success('已恢复')
   await loadUsers()
+}
+
+async function handleRestoreDeleted(row: User) {
+  await ElMessageBox.confirm(`确定恢复用户「${row.realName}」吗？`, '提示', { type: 'warning' })
+  await usersApi.restore(row.id)
+  ElMessage.success('已恢复')
+  await loadDeletedUsers()
 }
 
 async function handleForceDelete(row: User) {
@@ -484,6 +577,39 @@ async function handleResetPwd() {
 // ── 批量导入 ──────────────────────────────────────────────
 const importDialogVisible = ref(false)
 const importResult = ref<{ success: number; failed: number; errors: string[] } | null>(null)
+
+// ── 删除确认弹窗 ──────────────────────────────────────────
+const deleteConfirmVisible = ref(false)
+const deleteTarget = ref<User | null>(null)
+const deleteUserOrgs = ref('')
+const deleteOption = ref(false) // false=仅软删除，true=删除关联资料
+const userStats = ref<{ examAnswers: number; examParticipants: number; scoreRecords: number; scores: number } | null>(null)
+const deleting = ref(false)
+
+async function confirmDelete() {
+  if (!deleteTarget.value) return
+  deleting.value = true
+  try {
+    if (deleteOption.value) {
+      // 彻底删除关联资料
+      await usersApi.forceDelete(deleteTarget.value.id)
+    } else {
+      // 软删除
+      await usersApi.remove(deleteTarget.value.id)
+    }
+    ElMessage.success('删除成功')
+    deleteConfirmVisible.value = false
+    if (showDeleted.value) {
+      await loadDeletedUsers()
+    } else {
+      await loadUsers()
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '删除失败')
+  } finally {
+    deleting.value = false
+  }
+}
 
 async function handleImportFile(file: any) {
   importResult.value = null
@@ -608,5 +734,41 @@ onMounted(() => {
   align-items: center;
   gap: 16px;
   margin-bottom: 16px;
+}
+.delete-confirm-content {
+  .user-info {
+    p {
+      margin: 8px 0;
+      color: #606266;
+    }
+  }
+  .warning-text {
+    margin: 16px 0;
+    .stats-list {
+      margin: 12px 0 12px 20px;
+      padding: 0;
+      list-style: disc;
+      color: #606266;
+      li {
+        margin: 4px 0;
+      }
+    }
+    .tip-note {
+      color: #909399;
+      font-size: 12px;
+      margin-top: 12px;
+    }
+  }
+  .delete-options {
+    margin-top: 16px;
+  }
+}
+.right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  .total {
+    margin-left: 8px;
+  }
 }
 </style>

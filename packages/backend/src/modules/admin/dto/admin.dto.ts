@@ -77,8 +77,7 @@ export class CreateTenantAdminDto {
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
   TENANT_ADMIN = 'TENANT_ADMIN',
-  SCHOOL = 'SCHOOL',
-  CLASS = 'CLASS',
+  CLASS_ADMIN = 'CLASS_ADMIN',
   TEACHER = 'TEACHER',
   STUDENT = 'STUDENT',
 }

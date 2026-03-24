@@ -150,8 +150,7 @@
           <el-select v-model="allUserQuery.role" placeholder="角色" clearable style="width: 140px" @change="loadAllUsers">
             <el-option label="超级管理员" value="SUPER_ADMIN" />
             <el-option label="机构管理员" value="TENANT_ADMIN" />
-            <el-option label="学校管理员" value="SCHOOL" />
-            <el-option label="班级管理员" value="CLASS" />
+            <el-option label="班级管理员" value="CLASS_ADMIN" />
             <el-option label="教师" value="TEACHER" />
             <el-option label="学生" value="STUDENT" />
           </el-select>
@@ -327,6 +326,16 @@
     <!-- 新增/编辑成员 -->
     <el-dialog v-model="userFormVisible" :title="editUser ? '编辑成员' : '新增成员'" width="480px">
       <el-form :model="userForm" label-width="90px">
+        <el-form-item v-if="!editUser" label="所属机构" required>
+          <el-select v-model="userForm.tenantId" placeholder="请选择机构" style="width: 100%">
+            <el-option
+              v-for="t in tenants"
+              :key="t.id"
+              :label="t.name"
+              :value="t.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="用户名" required>
           <el-input v-model="userForm.username" :disabled="!!editUser" placeholder="同机构内唯一" />
         </el-form-item>
@@ -336,8 +345,7 @@
         <el-form-item label="角色" required>
           <el-select v-model="userForm.role" style="width: 100%">
             <el-option label="机构管理员" value="TENANT_ADMIN" />
-            <el-option label="学校管理员" value="SCHOOL" />
-            <el-option label="班级管理员" value="CLASS" />
+            <el-option label="班级管理员" value="CLASS_ADMIN" />
             <el-option label="教师" value="TEACHER" />
             <el-option label="学生" value="STUDENT" />
           </el-select>
@@ -615,7 +623,14 @@ const selectedUserIds = ref<string[]>([])
 const userFormVisible = ref(false)
 const editUser = ref<any>(null)
 const userForm = reactive({
-  username: '', realName: '', role: 'TEACHER', phone: '', email: '', password: '', studentNo: '',
+  tenantId: '',
+  username: '',
+  realName: '',
+  role: 'TEACHER',
+  phone: '',
+  email: '',
+  password: '',
+  studentNo: '',
 })
 
 async function loadTenantUsers() {
@@ -636,9 +651,18 @@ function handleSelectionChange(selection: any[]) {
 }
 
 function openCreateUser() {
-  if (!selectedTenantId.value) { ElMessage.warning('请先选择机构'); return }
   editUser.value = null
-  Object.assign(userForm, { username: '', realName: '', role: 'TEACHER', phone: '', email: '', password: '', studentNo: '' })
+  // 如果有选中机构，默认使用；否则弹窗中手动选择
+  Object.assign(userForm, {
+    tenantId: selectedTenantId.value || '',
+    username: '',
+    realName: '',
+    role: 'TEACHER',
+    phone: '',
+    email: '',
+    password: '',
+    studentNo: ''
+  })
   userFormVisible.value = true
 }
 
@@ -654,6 +678,7 @@ function openEditUser(row: any, isAllUsers: boolean = false) {
 async function saveUser() {
   if (!userForm.username || !userForm.realName) { ElMessage.warning('用户名和姓名为必填项'); return }
   if (!editUser.value && !userForm.password) { ElMessage.warning('初始密码为必填项'); return }
+  if (!editUser.value && !userForm.tenantId) { ElMessage.warning('所属机构为必填项'); return }
   if (userForm.password && userForm.password.length < 6) { ElMessage.warning('密码至少 6 位'); return }
   saving.value = true
   try {
@@ -662,7 +687,9 @@ async function saveUser() {
       else await adminApi.updateTenantUser(selectedTenantId.value, editUser.value.id, userForm)
       ElMessage.success('保存成功')
     } else {
-      await adminApi.createTenantUser(selectedTenantId.value, userForm)
+      // 新增时需要分离 tenantId，只发送其他字段到后端
+      const { tenantId, ...userData } = userForm
+      await adminApi.createTenantUser(tenantId, userData)
       ElMessage.success('新增成功')
     }
     userFormVisible.value = false
@@ -766,12 +793,12 @@ function openMemberManagement(row: any) {
 // ── 工具函数 ─────────────────────────────────────────────
 
 const roleLabelMap: Record<string, string> = {
-  SUPER_ADMIN: '超级管理员', TENANT_ADMIN: '机构管理员', SCHOOL: '学校管理员',
-  CLASS: '班级管理员', TEACHER: '教师', STUDENT: '学生',
+  SUPER_ADMIN: '超级管理员', TENANT_ADMIN: '机构管理员', CLASS_ADMIN: '班级管理员',
+  TEACHER: '教师', STUDENT: '学生',
 }
 const roleTagMap: Record<string, string> = {
-  SUPER_ADMIN: 'danger', TENANT_ADMIN: 'primary', SCHOOL: 'success',
-  CLASS: 'warning', TEACHER: '', STUDENT: 'info',
+  SUPER_ADMIN: 'danger', TENANT_ADMIN: 'primary', CLASS_ADMIN: 'success',
+  TEACHER: '', STUDENT: 'info',
 }
 function getRoleLabel(role: string) { return roleLabelMap[role] || role }
 function getRoleTagType(role: string) { return roleTagMap[role] || '' }
@@ -779,35 +806,19 @@ function getRoleTagType(role: string) { return roleTagMap[role] || '' }
 
 <style scoped>
 .admin-page {
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 100px);
   background: #fff;
   border-radius: 4px;
 }
 .admin-page :deep(.el-tabs) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
   border: none;
-  overflow: hidden;
 }
 .admin-page :deep(.el-tabs--border-card) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
   border: none;
 }
 .admin-page :deep(.el-tabs__content) {
-  flex: 1;
-  overflow-y: auto;
   padding: 16px;
 }
-.admin-page :deep(.el-tabs__header) {
-  flex-shrink: 0;
-}
 .tab-header { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-.stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; padding: 8px 0; }
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; padding: 8px 0; }
 .stat-card { text-align: center; }
 .stat-value { font-size: 32px; font-weight: 700; color: #409eff; }

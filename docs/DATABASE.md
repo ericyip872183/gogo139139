@@ -54,7 +54,7 @@ Module (模块定义，平台级，无tenantId)
 | username | String | UNIQUE(tenantId,username) | 同机构内唯一 |
 | password | String | | bcrypt 哈希 |
 | realName | String? | | 真实姓名 |
-| role | Enum | | SUPER_ADMIN / TENANT_ADMIN / SCHOOL / CLASS / TEACHER / STUDENT |
+| role | Enum | | SUPER_ADMIN / TENANT_ADMIN / CLASS_ADMIN / TEACHER / STUDENT |
 | phone | String? | | 手机号 |
 | email | String? | | 邮箱 |
 | avatar | String? | | 头像 URL |

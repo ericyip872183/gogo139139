@@ -220,6 +220,44 @@
 
 ---
 
+## AI 大模型管理 `/api/ai`
+
+### 超管端点 `/api/ai/admin`
+
+| 方法 | 路径 | 角色 | 说明 |
+|------|------|------|------|
+| GET | `/ai/admin/providers` | SUPER_ADMIN | 获取所有 AI 服务商 |
+| POST | `/ai/admin/providers` | SUPER_ADMIN | 创建 AI 服务商 |
+| PUT | `/ai/admin/providers/:id` | SUPER_ADMIN | 更新 AI 服务商 |
+| DELETE | `/ai/admin/providers/:id` | SUPER_ADMIN | 删除 AI 服务商 |
+| GET | `/ai/admin/models` | SUPER_ADMIN | 获取所有 AI 模型 |
+| POST | `/ai/admin/models` | SUPER_ADMIN | 创建 AI 模型 |
+| PUT | `/ai/admin/models/:id` | SUPER_ADMIN | 更新 AI 模型 |
+| DELETE | `/ai/admin/models/:id` | SUPER_ADMIN | 删除 AI 模型 |
+| GET | `/ai/admin/tenant-models` | SUPER_ADMIN | 获取机构模型配置 |
+| POST | `/ai/admin/tenant-models` | SUPER_ADMIN | 为机构设置模型 |
+| DELETE | `/ai/admin/tenant-models` | SUPER_ADMIN | 移除机构模型配置 |
+| GET | `/ai/admin/quotas/platform` | SUPER_ADMIN | 获取平台总配额 |
+| GET | `/ai/admin/quotas` | SUPER_ADMIN | 获取所有机构配额 |
+| POST | `/ai/admin/quotas` | SUPER_ADMIN | 分配配额给机构 |
+| GET | `/ai/admin/alerts` | SUPER_ADMIN | 获取预警记录 |
+| POST | `/ai/admin/alerts/:id/resolve` | SUPER_ADMIN | 标记预警为已处理 |
+| GET | `/ai/admin/stats/platform` | SUPER_ADMIN | 获取平台使用统计 |
+| GET | `/ai/admin/stats/tenant` | SUPER_ADMIN | 获取机构使用统计 |
+
+### 机构端点 `/api/ai/tenant`
+
+| 方法 | 路径 | 角色 | 说明 |
+|------|------|------|------|
+| GET | `/ai/tenant/services` | TENANT_ADMIN+ | 获取本机构可用服务（只读） |
+| GET | `/ai/tenant/stats` | TENANT_ADMIN+ | 获取本机构使用统计 |
+| POST | `/ai/tenant/recharge` | TENANT_ADMIN+ | 创建充值订单 |
+| GET | `/ai/tenant/recharges` | TENANT_ADMIN+ | 获取充值记录 |
+| POST | `/ai/tenant/quota-request` | TENANT_ADMIN+ | 申请增加配额 |
+| GET | `/ai/tenant/alerts` | TENANT_ADMIN+ | 获取本机构预警记录 |
+
+---
+
 ## 错误码
 
 | code | 说明 |

@@ -22,19 +22,19 @@ export class PapersController {
   }
 
   @Post()
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   create(@CurrentUser() user: { tenantId: string }, @Body() dto: CreatePaperDto) {
     return this.service.create(user.tenantId, dto)
   }
 
   @Patch(':id')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   update(@CurrentUser() user: { tenantId: string }, @Param('id') id: string, @Body() dto: UpdatePaperDto) {
     return this.service.update(user.tenantId, id, dto)
   }
 
   @Delete(':id')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   remove(@CurrentUser() user: { tenantId: string }, @Param('id') id: string) {
     return this.service.remove(user.tenantId, id)
   }

@@ -415,7 +415,7 @@ const user = computed(() => auth.user)
 
 const isSuperAdmin = computed(() => user.value?.role === 'SUPER_ADMIN')
 const isTenantAdmin = computed(() => user.value?.role === 'TENANT_ADMIN')
-const isTeacher = computed(() => ['TEACHER', 'SCHOOL', 'CLASS'].includes(user.value?.role || ''))
+const isTeacher = computed(() => ['TEACHER', 'CLASS_ADMIN'].includes(user.value?.role || ''))
 const isStudent = computed(() => user.value?.role === 'STUDENT')
 
 const roleLabel = computed(() => {
@@ -423,8 +423,7 @@ const roleLabel = computed(() => {
     SUPER_ADMIN: '超级管理员',
     TENANT_ADMIN: '机构管理员',
     TEACHER: '教师',
-    SCHOOL: '学校管理员',
-    CLASS: '班级管理员',
+    CLASS_ADMIN: '班级管理员',
     STUDENT: '学生',
   }
   return map[user.value?.role ?? 'STUDENT']

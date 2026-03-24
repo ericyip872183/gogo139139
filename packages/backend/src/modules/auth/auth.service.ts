@@ -18,7 +18,7 @@ export class AuthService {
   async login(dto: LoginDto) {
     const tenant = await this.resolveTenant(dto.tenantCode)
     const user = await this.prisma.user.findFirst({
-      where: { tenantId: tenant.id, username: dto.username, isActive: true },
+      where: { tenantId: tenant.id, username: dto.username, isActive: true, isDeleted: false },
     })
     if (!user) throw new UnauthorizedException('用户名或密码错误')
     const valid = await bcrypt.compare(dto.password, user.password)
@@ -42,7 +42,7 @@ export class AuthService {
     // 查找该机构下绑定了此联系方式的用户
     const field = isEmail ? { email: contact } : { phone: contact }
     const user = await this.prisma.user.findFirst({
-      where: { tenantId: tenant.id, isActive: true, ...field },
+      where: { tenantId: tenant.id, isActive: true, isDeleted: false, ...field },
     })
     if (!user) {
       throw new BadRequestException('该机构下未找到绑定此手机/邮箱的用户')
@@ -79,7 +79,7 @@ export class AuthService {
 
     const field = isEmail ? { email: contact } : { phone: contact }
     const user = await this.prisma.user.findFirst({
-      where: { tenantId: tenant.id, isActive: true, ...field },
+      where: { tenantId: tenant.id, isActive: true, isDeleted: false, ...field },
     })
     if (!user) throw new UnauthorizedException('用户不存在')
 
@@ -101,7 +101,7 @@ export class AuthService {
 
     const field = isEmail ? { email: contact } : { phone: contact }
     const user = await this.prisma.user.findFirst({
-      where: { tenantId: tenant.id, isActive: true, ...field },
+      where: { tenantId: tenant.id, isActive: true, isDeleted: false, ...field },
     })
     if (!user) throw new BadRequestException('用户不存在')
 
@@ -114,7 +114,7 @@ export class AuthService {
   async lookupByUsername(username: string) {
     if (!username) return []
     const users = await this.prisma.user.findMany({
-      where: { username, isActive: true },
+      where: { username, isActive: true, isDeleted: false },
       select: { tenant: { select: { name: true, code: true } } },
     })
     return users.map(u => u.tenant)
@@ -128,7 +128,7 @@ export class AuthService {
     if (!isEmail && !isPhone) return []
     const field = isEmail ? { email: contact } : { phone: contact }
     const users = await this.prisma.user.findMany({
-      where: { isActive: true, ...field },
+      where: { isActive: true, isDeleted: false, ...field },
       select: { tenant: { select: { name: true, code: true } } },
     })
     return users.map(u => u.tenant)

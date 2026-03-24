@@ -45,7 +45,7 @@ export class ScoresController {
 
   // 教师端：手动修改分数
   @Patch(':id')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   updateScore(
     @CurrentUser() user: { tenantId: string },
     @Param('id') id: string,
