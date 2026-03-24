@@ -15,7 +15,7 @@ export class AiController {
    * 对话接口（模拟病人）
    */
   @Post('chat')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN', 'STUDENT')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN', 'STUDENT')
   chat(
     @CurrentUser() user: { tenantId: string; id: string },
     @Body() dto: ChatDto,
@@ -27,7 +27,7 @@ export class AiController {
    * OCR 识别（试题录入）
    */
   @Post('ocr')
-  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
   ocr(
     @CurrentUser() user: { tenantId: string; id: string },
     @Body() dto: OcrDto,
@@ -73,11 +73,22 @@ export class AiController {
    */
   @Post('config')
   @Roles('SUPER_ADMIN')
-  saveConfig(
-    @CurrentUser() user: { tenantId: string },
-    @Body() config: { apiKey: string; endpoint: string; model: string },
+  async saveConfig(
+    @CurrentUser() user: { tenantId: string; role: string },
+    @Body() config: { apiKey?: string; apiSecret?: string; endpoint?: string; model?: string; maxTokens?: number; isEnabled?: boolean; systemPrompt?: string },
   ) {
-    // TODO: 实现配置保存
-    return { message: '配置保存成功' }
+    // 超管保存本机构配置或更新平台默认配置
+    const targetTenantId = user.role === 'SUPER_ADMIN' ? 'platform' : user.tenantId
+
+    // 查找现有配置
+    const existing = await this.service.getConfig(targetTenantId)
+
+    if (existing) {
+      // 更新配置
+      return this.service.updateConfig(targetTenantId, config)
+    } else {
+      // 创建新配置
+      return this.service.createConfig(targetTenantId, config)
+    }
   }
 }

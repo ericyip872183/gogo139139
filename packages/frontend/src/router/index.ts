@@ -106,6 +106,20 @@ const router = createRouter({
           component: () => import('@/views/ai/AiSettingsView.vue'),
           meta: { title: 'AI 大模型配置', roles: ['SUPER_ADMIN', 'TENANT_ADMIN'] },
         },
+        // AI 平台管理（仅超管）
+        {
+          path: 'ai-platform',
+          name: 'AiPlatform',
+          component: () => import('@/views/ai/AiPlatformView.vue'),
+          meta: { title: 'AI 平台管理', roles: ['SUPER_ADMIN'] },
+        },
+        // 机构 AI 服务中心（仅超管和机构管理员）
+        {
+          path: 'ai-service',
+          name: 'AiService',
+          component: () => import('@/views/ai/TenantServiceCenterView.vue'),
+          meta: { title: 'AI 服务中心', roles: ['SUPER_ADMIN', 'TENANT_ADMIN'] },
+        },
         // 学生端 - 我的考试
         {
           path: 'my-exams',
@@ -146,19 +160,23 @@ const router = createRouter({
 })
 
 // 路由守卫
-router.beforeEach((to) => {
+router.beforeEach((to, from, next) => {
   const auth = useAuthStore()
   if (to.meta.requiresAuth !== false && !auth.isLoggedIn) {
-    return '/login'
+    next('/login')
+    return
   }
   if (to.path === '/login' && auth.isLoggedIn) {
-    return '/'
+    next('/')
+    return
   }
   // 角色权限拦截
   const roles = to.meta.roles as string[] | undefined
   if (roles && auth.user && !roles.includes(auth.user.role)) {
-    return '/dashboard'
+    next('/dashboard')
+    return
   }
+  next()
 })
 
 export default router

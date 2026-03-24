@@ -3,7 +3,7 @@
     <!-- 顶部导航栏 -->
     <header class="app-header">
       <div class="header-left">
-        <span class="logo">盼蕾中医/医学教学平台</span>
+        <span class="logo">若容虚拟数据平台</span>
         <el-menu
           mode="horizontal"
           :ellipsis="false"
@@ -12,15 +12,15 @@
           class="main-nav"
         >
           <el-menu-item index="/dashboard">首页</el-menu-item>
-          <!-- 机构管理员/学校管理员：显示全部管理菜单 -->
-          <template v-if="isTenantAdmin || isSchoolAdmin">
+          <!-- 机构管理员/班级管理员：显示全部管理菜单 -->
+          <template v-if="isTenantAdmin || isClassAdmin">
             <el-menu-item index="/organizations">组织架构</el-menu-item>
             <el-menu-item index="/users">用户管理</el-menu-item>
             <el-menu-item index="/questions">题库管理</el-menu-item>
             <el-menu-item index="/papers">试卷管理</el-menu-item>
             <el-menu-item index="/exams">考试管理</el-menu-item>
             <el-menu-item index="/score-tables">评分表</el-menu-item>
-            <el-menu-item index="/ai-settings">AI 大模型</el-menu-item>
+            <el-menu-item index="/ai-service">AI 服务中心</el-menu-item>
           </template>
           <!-- 教师：显示教学相关菜单 -->
           <template v-else-if="isTeacher">
@@ -35,11 +35,16 @@
             <el-menu-item index="/my-exams">我的考试</el-menu-item>
             <el-menu-item index="/scores">成绩查询</el-menu-item>
           </template>
-          <!-- 超级管理员：显示超管后台 + 组织架构 + 用户管理 -->
+          <!-- 超级管理员：显示全部管理菜单 + 超管后台 -->
           <template v-else-if="isSuperAdmin">
             <el-menu-item index="/admin">超管后台</el-menu-item>
             <el-menu-item index="/organizations">组织架构</el-menu-item>
             <el-menu-item index="/users">用户管理</el-menu-item>
+            <el-menu-item index="/questions">题库管理</el-menu-item>
+            <el-menu-item index="/papers">试卷管理</el-menu-item>
+            <el-menu-item index="/exams">考试管理</el-menu-item>
+            <el-menu-item index="/score-tables">评分表</el-menu-item>
+            <el-menu-item index="/ai-platform">AI 平台管理</el-menu-item>
           </template>
         </el-menu>
       </div>
@@ -106,8 +111,8 @@ const auth = useAuthStore()
 const user = computed(() => auth.user)
 const isSuperAdmin = computed(() => auth.user?.role === 'SUPER_ADMIN')
 const isTenantAdmin = computed(() => auth.user?.role === 'TENANT_ADMIN')
-const isSchoolAdmin = computed(() => auth.user?.role === 'SCHOOL')
-const isTeacher = computed(() => ['TEACHER', 'SCHOOL', 'CLASS'].includes(auth.user?.role || ''))
+const isClassAdmin = computed(() => auth.user?.role === 'CLASS_ADMIN')
+const isTeacher = computed(() => ['TEACHER', 'CLASS_ADMIN'].includes(auth.user?.role || ''))
 const isStudent = computed(() => auth.user?.role === 'STUDENT')
 const activeMenu = computed(() => '/' + route.path.split('/')[1])
 const purchasedModules = computed(() => auth.modules)
@@ -132,10 +137,9 @@ function handleUserCommand(command: string) {
 
 <style scoped>
 .app-layout {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
+  display: block;
+  height: auto;
+  min-height: 100vh;
 }
 
 .app-header {
@@ -145,9 +149,10 @@ function handleUserCommand(command: string) {
   border-bottom: 1px solid #e4e7ed;
   padding: 0 20px;
   background: #fff;
-  flex-shrink: 0;
   height: 60px;
   z-index: 100;
+  position: sticky;
+  top: 0;
 }
 
 .header-left { display: flex; align-items: center; gap: 20px; }
@@ -159,8 +164,6 @@ function handleUserCommand(command: string) {
 .user-name { font-size: 14px; color: #303133; }
 
 .app-main {
-  flex: 1;
-  overflow-y: auto;
   background: #f5f7fa;
   padding: 20px;
 }
