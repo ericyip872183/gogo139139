@@ -25,6 +25,11 @@
       <el-tab-pane label="使用统计" name="stats">
         <UsageStatistics />
       </el-tab-pane>
+
+      <!-- 模型测试 -->
+      <el-tab-pane label="模型测试" name="test">
+        <ModelTest />
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
@@ -36,6 +41,7 @@ import ModelManagement from './components/ModelManagement.vue'
 import TenantModelConfig from './components/TenantModelConfig.vue'
 import QuotaManagement from './components/QuotaManagement.vue'
 import UsageStatistics from './components/UsageStatistics.vue'
+import ModelTest from './components/ModelTest.vue'
 
 const activeTab = ref('providers')
 </script>
