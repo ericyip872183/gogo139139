@@ -24,6 +24,26 @@
 
       <el-table :data="models" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="180" />
+        <el-table-column label="连接状态" width="100">
+          <template #default="{ row }">
+            <div class="status-indicator">
+              <span
+                class="status-dot"
+                :class="getStatusClass(row)"
+                :title="getStatusTitle(row)"
+              ></span>
+              <el-button
+                v-if="row.isEnabled"
+                link
+                type="primary"
+                size="small"
+                @click="handleCheckStatus(row)"
+              >
+                <el-icon><Refresh /></el-icon>
+              </el-button>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="name" label="模型名称" width="150" />
         <el-table-column prop="modelId" label="模型 ID/EP" min-width="200">
           <template #default="{ row }">
@@ -37,7 +57,7 @@
             ¥{{ row.inputPrice }}/¥{{ row.outputPrice }}
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="80">
+        <el-table-column label="启用状态" width="80">
           <template #default="{ row }">
             <el-tag :type="row.isEnabled ? 'success' : 'danger'" size="small">
               {{ row.isEnabled ? '启用' : '禁用' }}
@@ -208,6 +228,10 @@ const handleSubmit = async () => {
     if (isEdit.value && formData.id) {
       await aiAdminApi.updateModel(formData.id, data)
       ElMessage.success('更新成功')
+      // 更新后自动检测状态
+      if (formData.isEnabled) {
+        await checkSingleModelStatus(formData.id!)
+      }
     } else {
       await aiAdminApi.createModel(data)
       ElMessage.success('创建成功')
@@ -218,6 +242,53 @@ const handleSubmit = async () => {
     if (e.message) ElMessage.error(e.message)
   } finally {
     submitting.value = false
+  }
+}
+
+// 获取状态灯样式
+const getStatusClass = (row: AiModel) => {
+  if (!row.isEnabled) return 'disabled'
+  if (!row.lastStatus) return 'unknown'
+  if (row.lastStatus === 'online') return 'online'
+  if (row.lastStatus === 'offline') return 'offline'
+  if (row.lastStatus === 'error') return 'error'
+  return 'unknown'
+}
+
+// 获取状态提示
+const getStatusTitle = (row: AiModel) => {
+  if (!row.isEnabled) return '已禁用'
+  if (!row.lastStatus) return '未检测'
+  if (row.lastStatus === 'online') return '连接正常'
+  if (row.lastStatus === 'offline') return '连接失败'
+  if (row.lastStatus === 'error') return `错误：${row.lastError || '未知错误'}`
+  return '未知状态'
+}
+
+// 检测单个模型状态
+const handleCheckStatus = async (row: AiModel) => {
+  try {
+    const result = await aiAdminApi.testModel(row.id, {
+      providerId: row.providerId,
+      message: 'Hello',
+    })
+    if (result.success) {
+      ElMessage.success('模型连接正常')
+    } else {
+      ElMessage.error(`模型测试失败：${result.error}`)
+    }
+    loadModels()
+  } catch (e: any) {
+    ElMessage.error(e.message || '检测失败')
+  }
+}
+
+// 检测单个模型状态（不显示消息）
+const checkSingleModelStatus = async (modelId: string) => {
+  try {
+    await aiAdminApi.getModelStatus(modelId)
+  } catch (e) {
+    console.error('检测模型状态失败', e)
   }
 }
 
@@ -240,5 +311,37 @@ onMounted(() => {
   font-size: 12px;
   color: #999;
   margin-top: 4px;
+}
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.status-dot.online {
+  background-color: #67c23a;
+  box-shadow: 0 0 6px #67c23a;
+}
+.status-dot.offline {
+  background-color: #f56c6c;
+  box-shadow: 0 0 6px #f56c6c;
+}
+.status-dot.error {
+  background-color: #e6a23c;
+  box-shadow: 0 0 6px #e6a23c;
+}
+.status-dot.disabled {
+  background-color: #909399;
+  box-shadow: 0 0 6px #909399;
+}
+.status-dot.unknown {
+  background-color: #dcdfe6;
+  box-shadow: 0 0 6px #dcdfe6;
 }
 </style>

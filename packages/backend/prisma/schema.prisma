@@ -500,6 +500,9 @@ model AiModel {
   inputPrice  Decimal  @default(0) @db.Decimal(10, 6)
   outputPrice Decimal  @default(0) @db.Decimal(10, 6)
   isEnabled   Boolean  @default(true)
+  lastCheckedAt DateTime?  // 最后检测时间
+  lastStatus    String?    @db.VarChar(20)  // 'online' | 'offline' | 'error'
+  lastError     String? @db.Text  // 错误信息
   createdAt   DateTime @default(now())
 
   // 关联

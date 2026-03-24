@@ -202,4 +202,36 @@ export class AiAdminController {
   ) {
     return this.service.getTenantStats(tenantId, days ? parseInt(days) : 30)
   }
+
+  // ─── 模型测试与状态检测 ───────────────────────────────────────
+
+  /**
+   * 测试模型连接
+   */
+  @Post('models/:id/test')
+  @Roles('SUPER_ADMIN')
+  async testModel(
+    @Param('id') modelId: string,
+    @Body() body: { providerId: string; message: string; mode?: 'chat' | 'mock_patient' },
+  ) {
+    return this.service.testModel(body.providerId, modelId, body.message, body.mode || 'chat')
+  }
+
+  /**
+   * 获取模型状态
+   */
+  @Get('models/:id/status')
+  @Roles('SUPER_ADMIN')
+  getModelStatus(@Param('id') modelId: string) {
+    return this.service.getModelStatus(modelId)
+  }
+
+  /**
+   * 批量检测所有模型状态
+   */
+  @Post('models/check-all')
+  @Roles('SUPER_ADMIN')
+  checkAllModels() {
+    return this.service.checkAllModels()
+  }
 }

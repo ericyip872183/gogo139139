@@ -28,8 +28,34 @@ export interface AiModel {
   inputPrice: number
   outputPrice: number
   isEnabled: boolean
+  lastStatus?: 'online' | 'offline' | 'error'
+  lastCheckedAt?: string
+  lastError?: string
   createdAt: string
   provider?: { name: string }
+}
+
+/**
+ * 模型测试结果
+ */
+export interface ModelTestResult {
+  success: boolean
+  content?: string
+  tokens?: number
+  duration?: number
+  cost?: number
+  error?: string
+}
+
+/**
+ * 模型状态
+ */
+export interface ModelStatus {
+  id: string
+  name: string
+  lastStatus: 'online' | 'offline' | 'error'
+  lastCheckedAt: string
+  lastError?: string
 }
 
 /**
@@ -250,4 +276,22 @@ export const aiAdminApi = {
    * 获取本机构预警
    */
   getTenantAlerts: () => request.get<AiAlert[]>('/ai/tenant/alerts'),
+
+  // ─── 模型测试与状态检测 ───────────────────────────────────────
+
+  /**
+   * 测试模型连接
+   */
+  testModel: (modelId: string, data: { providerId: string; message: string; mode?: 'chat' | 'mock_patient' }) =>
+    request.post<ModelTestResult>(`/ai/admin/models/${modelId}/test`, data),
+
+  /**
+   * 获取模型状态
+   */
+  getModelStatus: (modelId: string) => request.get<ModelStatus>(`/ai/admin/models/${modelId}/status`),
+
+  /**
+   * 批量检测所有模型状态
+   */
+  checkAllModels: () => request.post<ModelStatus[]>('/ai/admin/models/check-all'),
 }

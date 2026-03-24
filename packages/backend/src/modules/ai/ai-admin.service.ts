@@ -372,4 +372,206 @@ export class AiAdminService {
       _count: true,
     })
   }
+
+  // ─── 模型测试与状态检测 ───────────────────────────────────────
+
+  /**
+   * 测试模型连接
+   */
+  async testModel(providerId: string, modelId: string, message: string, mode: 'chat' | 'mock_patient' = 'chat') {
+    const provider = await this.prisma.aiProvider.findUnique({
+      where: { id: providerId },
+    })
+
+    if (!provider) {
+      throw new Error('服务商不存在')
+    }
+
+    const startTime = Date.now()
+
+    // 构建 system prompt
+    let systemPrompt = '你是一个有帮助的 AI 助手。'
+    if (mode === 'mock_patient') {
+      systemPrompt = `你是一名标准化病人（SP），正在配合医学生进行问诊练习。
+- 你是一位 45 岁左右的中年人
+- 主诉：反复胃脘部隐痛 3 个月
+- 现病史：3 个月前因饮食不规律出现胃脘部隐痛，喜温喜按，进食后缓解，空腹时加重
+- 伴随症状：神疲乏力，食欲不振，大便溏薄
+- 舌脉：舌淡苔白，脉细弱
+- 请以患者口吻回答，描述症状，不要直接说出中医诊断
+- 回答要口语化，像真实病人一样`
+    }
+
+    try {
+      const response = await fetch(provider.baseUrl + '/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${provider.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: message },
+          ],
+          temperature: 0.7,
+          max_tokens: 1000,
+        }),
+      })
+
+      const duration = Date.now() - startTime
+
+      if (!response.ok) {
+        const errorData = await response.text()
+        // 更新模型状态为错误
+        await this.prisma.aiModel.update({
+          where: { id: modelId },
+          data: {
+            lastStatus: 'error',
+            lastCheckedAt: new Date(),
+            lastError: `HTTP ${response.status}: ${errorData}`,
+          },
+        })
+
+        return {
+          success: false,
+          error: `API 错误：${response.status}`,
+          duration,
+        }
+      }
+
+      const data = await response.json()
+      const content = data.choices?.[0]?.message?.content || '无回复内容'
+      const tokensUsed = data.usage?.total_tokens || 0
+
+      // 计算成本
+      const model = await this.prisma.aiModel.findUnique({
+        where: { id: modelId },
+      })
+      const cost = tokensUsed * (model?.inputPrice?.toNumber() || 0.001) / 1000
+
+      // 更新模型状态为在线
+      await this.prisma.aiModel.update({
+        where: { id: modelId },
+        data: {
+          lastStatus: 'online',
+          lastCheckedAt: new Date(),
+          lastError: null,
+        },
+      })
+
+      return {
+        success: true,
+        content,
+        tokens: tokensUsed,
+        duration,
+        cost,
+      }
+    } catch (error: any) {
+      const duration = Date.now() - startTime
+
+      // 更新模型状态为离线
+      await this.prisma.aiModel.update({
+        where: { id: modelId },
+        data: {
+          lastStatus: 'offline',
+          lastCheckedAt: new Date(),
+          lastError: error.message,
+        },
+      })
+
+      return {
+        success: false,
+        error: error.message,
+        duration,
+      }
+    }
+  }
+
+  /**
+   * 获取模型状态
+   */
+  async getModelStatus(modelId: string) {
+    const model = await this.prisma.aiModel.findUnique({
+      where: { id: modelId },
+      select: {
+        id: true,
+        name: true,
+        lastStatus: true,
+        lastCheckedAt: true,
+        lastError: true,
+      },
+    })
+
+    return model
+  }
+
+  /**
+   * 批量检测所有模型状态
+   */
+  async checkAllModels() {
+    const models = await this.prisma.aiModel.findMany({
+      where: { isEnabled: true },
+      include: {
+        provider: true,
+      },
+    })
+
+    const results = await Promise.all(
+      models.map(async (model) => {
+        const startTime = Date.now()
+        try {
+          const response = await fetch(model.provider.baseUrl + '/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${model.provider.apiKey}`,
+            },
+            body: JSON.stringify({
+              model: model.modelId,
+              messages: [{ role: 'user', content: 'Hello' }],
+              max_tokens: 10,
+            }),
+          })
+
+          const status = response.ok ? 'online' : 'offline'
+          await this.prisma.aiModel.update({
+            where: { id: model.id },
+            data: {
+              lastStatus: status,
+              lastCheckedAt: new Date(),
+              lastError: response.ok ? null : await response.text(),
+            },
+          })
+
+          return {
+            id: model.id,
+            name: model.name,
+            status,
+            lastCheckedAt: new Date(),
+          }
+        } catch (error: any) {
+          await this.prisma.aiModel.update({
+            where: { id: model.id },
+            data: {
+              lastStatus: 'offline',
+              lastCheckedAt: new Date(),
+              lastError: error.message,
+            },
+          })
+
+          return {
+            id: model.id,
+            name: model.name,
+            status: 'offline',
+            lastCheckedAt: new Date(),
+            error: error.message,
+          }
+        }
+      }),
+    )
+
+    return results
+  }
 }
