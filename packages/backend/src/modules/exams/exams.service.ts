@@ -99,6 +99,37 @@ export class ExamsService {
     return this.prisma.exam.update({ where: { id }, data: { status: ExamStatus.CANCELLED } })
   }
 
+  // 克隆考试
+  async clone(tenantId: string, id: string) {
+    const exam = await this._findOrFail(tenantId, id)
+    return this.prisma.$transaction(async (tx) => {
+      const newExam = await tx.exam.create({
+        data: {
+          tenantId,
+          paperId: exam.paperId,
+          title: `${exam.title} (副本)`,
+          description: exam.description,
+          startAt: null,
+          endAt: null,
+          duration: exam.duration,
+          maxSwitch: exam.maxSwitch,
+          status: ExamStatus.DRAFT,
+        },
+      })
+      // 复制考生
+      const participants = await tx.examParticipant.findMany({
+        where: { examId: id },
+        select: { userId: true },
+      })
+      if (participants.length) {
+        await tx.examParticipant.createMany({
+          data: participants.map(p => ({ examId: newExam.id, userId: p.userId })),
+        })
+      }
+      return newExam
+    })
+  }
+
   async addParticipants(tenantId: string, id: string, dto: AddParticipantsDto) {
     await this._findOrFail(tenantId, id)
     return this.prisma.$transaction(async (tx) => {

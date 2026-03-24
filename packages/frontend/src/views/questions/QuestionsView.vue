@@ -55,6 +55,7 @@
           <div class="right">
             <el-button type="primary" :icon="Plus" @click="openCreate">新增题目</el-button>
             <el-button :icon="Upload" @click="importDialogVisible = true">批量导入</el-button>
+            <el-button :icon="Download" @click="handleExport">导出 Excel</el-button>
             <el-button
               type="danger"
               :disabled="selectedIds.length === 0"
@@ -238,34 +239,17 @@
     </el-dialog>
 
     <!-- 批量导入弹窗 -->
-    <el-dialog v-model="importDialogVisible" title="批量导入题目" width="520px">
+    <el-dialog v-model="importDialogVisible" title="批量导入题目" width="560px">
       <div class="import-tips">
-        <p>请上传 JSON 文件，格式示例：</p>
-        <pre class="import-example">[
-  {
-    "type": "SINGLE",
-    "content": "以下哪项属于八纲辨证？",
-    "categoryName": "中医诊断学",
-    "difficulty": "MEDIUM",
-    "score": 2,
-    "explanation": "八纲包括阴阳表里寒热虚实",
-    "options": [
-      { "label": "A", "content": "阴阳表里", "isCorrect": true },
-      { "label": "B", "content": "气血津液", "isCorrect": false },
-      { "label": "C", "content": "五行生克", "isCorrect": false },
-      { "label": "D", "content": "脏腑经络", "isCorrect": false }
-    ]
-  },
-  {
-    "type": "JUDGE",
-    "content": "舌红苔黄为热证表现",
-    "answer": true
-  }
-]</pre>
+        <p>支持 Excel (.xlsx) 或 JSON (.json) 格式导入</p>
+        <p class="tip-note">Excel 表头：题型 | 题目内容 | 难度 | 分值 | 分类 | 答案 | 解析 | 选项 A | 选项 B | 选项 C | 选项 D</p>
       </div>
-      <el-upload accept=".json" :auto-upload="false" :show-file-list="false" :on-change="handleImportFile">
-        <el-button type="primary" :icon="Upload">选择 JSON 文件</el-button>
-      </el-upload>
+      <div class="import-actions">
+        <el-upload accept=".json,.xlsx" :auto-upload="false" :show-file-list="false" :on-change="handleImportFile">
+          <el-button type="primary" :icon="Upload">选择文件</el-button>
+        </el-upload>
+        <el-button link type="primary" @click="downloadTemplate">下载 Excel 模板</el-button>
+      </div>
       <div v-if="importResult" class="import-result">
         <el-alert
           :title="`导入完成：成功 ${importResult.success} 条，失败 ${importResult.failed} 条`"
@@ -566,19 +550,69 @@ const importDialogVisible = ref(false)
 const importResult = ref<{ success: number; failed: number; errors: string[] } | null>(null)
 
 async function handleImportFile(file: any) {
-  const text = await file.raw.text()
-  let rows: any[]
-  try {
-    rows = JSON.parse(text)
-    if (!Array.isArray(rows)) throw new Error()
-  } catch {
-    ElMessage.error('JSON 格式错误')
-    return
-  }
   importResult.value = null
-  const res = await questionsApi.batchImport(rows) as any
-  importResult.value = res
-  await loadQuestions()
+  const rawFile = file.raw as File
+  const ext = rawFile.name.split('.').pop()?.toLowerCase()
+
+  if (ext === 'xlsx') {
+    const formData = new FormData()
+    formData.append('file', rawFile)
+    if (selectedCategoryId.value) {
+      formData.append('categoryId', selectedCategoryId.value)
+    }
+    try {
+      const res = await questionsApi.importExcel(formData) as any
+      importResult.value = res
+      await loadQuestions()
+    } catch (e: any) {
+      ElMessage.error(e.message || 'Excel 导入失败')
+    }
+  } else if (ext === 'json') {
+    const text = await rawFile.text()
+    let rows: any[]
+    try {
+      rows = JSON.parse(text)
+      if (!Array.isArray(rows)) throw new Error()
+    } catch {
+      ElMessage.error('JSON 格式错误')
+      return
+    }
+    importResult.value = null
+    const res = await questionsApi.batchImport(rows) as any
+    importResult.value = res
+    await loadQuestions()
+  } else {
+    ElMessage.error('仅支持 .xlsx 或 .json 格式')
+  }
+}
+
+async function handleExport() {
+  const params: any = { page: 1, pageSize: 10000 }
+  if (query.keyword) params.keyword = query.keyword
+  if (query.type) params.type = query.type
+  if (query.difficulty) params.difficulty = query.difficulty
+  if (selectedCategoryId.value) params.categoryId = selectedCategoryId.value
+
+  const res = await questionsApi.exportExcel(params) as any
+  const url = window.URL.createObjectURL(new Blob([res]))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `题目导出-${new Date().getTime()}.xlsx`
+  a.click()
+  window.URL.revokeObjectURL(url)
+}
+
+function downloadTemplate() {
+  const header = '题型，题目内容，难度，分值，分类，答案，解析，选项 A，选项 B，选项 C，选项 D\n'
+  const row1 = '单选题，以下哪项属于八纲辨证？，中，2，中医诊断学，A，八纲包括阴阳表里寒热虚实，阴阳表里，气血津液，五行生克，脏腑经络\n'
+  const row2 = '判断题，舌红苔黄为热证表现，易，1，中医诊断学，正确，,,,,\n'
+  const blob = new Blob(['\uFEFF' + header + row1 + row2], { type: 'text/csv;charset=utf-8' })
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = '题目导入模板.csv'
+  a.click()
+  window.URL.revokeObjectURL(url)
 }
 
 onMounted(() => {

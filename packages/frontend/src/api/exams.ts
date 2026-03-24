@@ -43,6 +43,7 @@ export const examsApi = {
   update: (id: string, data: any) => request.patch<Exam>(`/exams/${id}`, data),
   publish: (id: string) => request.post(`/exams/${id}/publish`),
   cancel: (id: string) => request.post(`/exams/${id}/cancel`),
+  clone: (id: string) => request.post<Exam>(`/exams/${id}/clone`),
   getParticipants: (id: string) => request.get(`/exams/${id}/participants`),
   addParticipants: (id: string, data: { userIds?: string[]; organizationIds?: string[] }) =>
     request.post(`/exams/${id}/participants`, data),

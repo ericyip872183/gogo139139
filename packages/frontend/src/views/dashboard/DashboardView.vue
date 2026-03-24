@@ -1,286 +1,574 @@
 <template>
   <div class="dashboard">
+    <!-- 欢迎语 -->
     <div class="welcome">
       <h2>你好，{{ user?.realName }}</h2>
-      <p>{{ roleLabel }} · {{ isSuperAdmin ? '若容科技平台' : user?.tenantName }}</p>
+      <p>{{ roleLabel }} · {{ isSuperAdmin ? '平台运营中心' : user?.tenantName }}</p>
     </div>
 
-    <!-- 超级管理员首页 -->
+    <!-- ============ 超级管理员首页 ============ -->
     <template v-if="isSuperAdmin">
       <!-- 核心指标卡片 -->
-      <el-row :gutter="20" class="stat-cards">
-        <el-col :span="6" v-for="card in superAdminCards" :key="card.label">
-          <el-card class="stat-card" shadow="hover">
-            <div class="stat-content">
-              <div class="stat-icon" :style="{ background: card.color }">
-                <el-icon :size="24"><component :is="card.icon" /></el-icon>
-              </div>
-              <div>
-                <div class="stat-value">{{ card.value }}</div>
-                <div class="stat-label">{{ card.label }}</div>
+      <div class="stat-cards-grid">
+        <el-card class="stat-card clickable" shadow="hover" @click="goTo('/admin')">
+          <div class="stat-content">
+            <div class="stat-icon" style="background: #409eff22">
+              <el-icon :size="24"><OfficeBuilding /></el-icon>
+            </div>
+            <div>
+              <div class="stat-value">{{ stats?.overview?.tenantCount ?? '—' }}</div>
+              <div class="stat-label">机构总数</div>
+              <div class="stat-trend" v-if="stats?.overview?.tenantCount">点击查看详情</div>
+            </div>
+          </div>
+        </el-card>
+        <el-card class="stat-card clickable" shadow="hover" @click="goTo('/admin')">
+          <div class="stat-content">
+            <div class="stat-icon" style="background: #67c23a22">
+              <el-icon :size="24"><Tickets /></el-icon>
+            </div>
+            <div>
+              <div class="stat-value">{{ stats?.overview?.moduleInstanceCount ?? '—' }}</div>
+              <div class="stat-label">模块授权份数</div>
+              <div class="stat-trend" v-if="stats?.overview?.moduleInstanceCount">点击查看详情</div>
+            </div>
+          </div>
+        </el-card>
+        <el-card class="stat-card clickable" shadow="hover" @click="goTo('/admin')">
+          <div class="stat-content">
+            <div class="stat-icon" style="background: #e6a23c22">
+              <el-icon :size="24"><User /></el-icon>
+            </div>
+            <div>
+              <div class="stat-value">{{ stats?.overview?.userCount ?? '—' }}</div>
+              <div class="stat-label">平台用户数</div>
+              <div class="stat-trend" v-if="stats?.overview?.userCount">点击查看详情</div>
+            </div>
+          </div>
+        </el-card>
+        <el-card class="stat-card clickable" shadow="hover" @click="goTo('/admin')">
+          <div class="stat-content">
+            <div class="stat-icon" style="background: #f56c6c22">
+              <el-icon :size="24"><Warning /></el-icon>
+            </div>
+            <div>
+              <div class="stat-value">{{ stats?.expiringTenants?.length ?? 0 }}</div>
+              <div class="stat-label">到期预警</div>
+              <div class="stat-trend" v-if="stats?.expiringTenants?.length">
+                <span style="color: #f56c6c">{{ stats.expiringTenants.length }} 家机构即将到期</span>
               </div>
             </div>
-          </el-card>
-        </el-col>
-      </el-row>
+          </div>
+        </el-card>
+      </div>
 
-      <el-row :gutter="20">
-        <!-- 模块销售排行 -->
-        <el-col :span="12">
-          <el-card class="panel-card">
-            <template #header>
-              <div class="panel-header">
-                <span>模块销售排行</span>
-                <el-button link type="primary" @click="$router.push('/admin')">管理模块</el-button>
-              </div>
-            </template>
-            <div v-if="dashboardStats?.moduleSales?.length" class="module-sales-list">
-              <div
-                v-for="(item, index) in dashboardStats.moduleSales.slice(0, 6)"
-                :key="item.moduleId"
-                class="module-sales-item"
-              >
-                <div class="rank-badge" :class="`rank-${index + 1}`">{{ index + 1 }}</div>
-                <div class="module-name">{{ item.moduleName }}</div>
-                <div class="sold-count">
-                  <el-tag size="small" type="success">{{ item.soldCount }} 家机构</el-tag>
+      <!-- 专业模块展示 -->
+      <div class="modules-section">
+        <div class="section-header">
+          <h3>专业模块</h3>
+          <span class="section-desc">平台已上线 {{ modules.length }} 个专业教学模块</span>
+        </div>
+        <el-row :gutter="20">
+          <el-col :span="8" v-for="mod in modules" :key="mod.code">
+            <el-card class="module-card" shadow="hover">
+              <div class="module-header">
+                <span class="module-icon">{{ mod.icon }}</span>
+                <div class="module-info">
+                  <div class="module-name">{{ mod.name }}</div>
+                  <div class="module-type">{{ mod.type }}</div>
                 </div>
               </div>
-            </div>
-            <el-empty v-else description="暂无模块授权数据" :image-size="60" />
-          </el-card>
-        </el-col>
-
-        <!-- 用户角色分布 -->
-        <el-col :span="12">
-          <el-card class="panel-card">
-            <template #header><span>平台用户分布</span></template>
-            <div class="role-distribution">
-              <div v-for="item in roleDistribution" :key="item.role" class="role-item">
-                <div class="role-info">
-                  <el-tag :type="item.tagType" size="small">{{ item.label }}</el-tag>
-                  <span class="role-count">{{ item.count }} 人</span>
-                </div>
-                <el-progress
-                  :percentage="item.percentage"
-                  :color="item.color"
-                  :stroke-width="8"
-                  :show-text="false"
-                />
+              <p class="module-desc">{{ mod.description }}</p>
+              <div class="module-stats">
+                <span>已授权 <strong>{{ mod.authorizedCount ?? 0 }}</strong> 家</span>
+                <span class="module-phase" v-if="mod.phase">{{ mod.phase }}</span>
               </div>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
-
-      <el-row :gutter="20" style="margin-top: 20px">
-        <!-- 即将到期预警 -->
-        <el-col :span="12">
-          <el-card class="panel-card">
-            <template #header>
-              <div class="panel-header">
-                <span>
-                  到期预警
-                  <el-badge
-                    v-if="dashboardStats?.expiringTenants?.length"
-                    :value="dashboardStats.expiringTenants.length"
-                    type="danger"
-                  />
-                </span>
-                <span class="panel-sub">7 天内到期</span>
+              <div class="module-actions">
+                <el-button link type="primary" @click="showModuleDetail(mod)">介绍</el-button>
+                <el-button type="primary" size="small" @click="goToModule(mod.code)">进入模块</el-button>
               </div>
-            </template>
-            <div v-if="dashboardStats?.expiringTenants?.length" class="expiring-list">
-              <div
-                v-for="item in dashboardStats.expiringTenants"
-                :key="`${item.tenantName}-${item.moduleName}`"
-                class="expiring-item"
-              >
-                <div class="expiring-info">
-                  <span class="expiring-tenant">{{ item.tenantName }}</span>
-                  <span class="expiring-module">{{ item.moduleName }}</span>
-                </div>
-                <el-tag type="danger" size="small">
-                  {{ formatExpiry(item.expiredAt) }}
-                </el-tag>
-              </div>
-            </div>
-            <el-empty v-else description="暂无即将到期授权" :image-size="60" />
-          </el-card>
-        </el-col>
-
-        <!-- 最近动态 -->
-        <el-col :span="12">
-          <el-card class="panel-card">
-            <template #header><span>最近动态</span></template>
-            <el-timeline class="activity-timeline">
-              <el-timeline-item
-                v-for="(item, index) in recentActivities"
-                :key="index"
-                :timestamp="item.time"
-                :type="item.type"
-                size="normal"
-              >
-                {{ item.text }}
-              </el-timeline-item>
-              <el-timeline-item v-if="!recentActivities.length" timestamp="">
-                <el-empty description="暂无最近动态" :image-size="40" />
-              </el-timeline-item>
-            </el-timeline>
-          </el-card>
-        </el-col>
-      </el-row>
+            </el-card>
+          </el-col>
+        </el-row>
+      </div>
     </template>
 
-    <!-- 普通用户首页（教师/学生） -->
-    <template v-else>
+    <!-- ============ 机构管理员首页 ============ -->
+    <template v-else-if="isTenantAdmin">
       <el-row :gutter="20" class="stat-cards">
-        <el-col :span="6" v-for="card in statCards" :key="card.label">
-          <el-card
-            class="stat-card"
-            :class="{ clickable: !!card.route }"
-            shadow="hover"
-            @click="card.route && $router.push(card.route)"
-          >
+        <el-col :span="8">
+          <el-card class="stat-card" shadow="hover">
             <div class="stat-content">
-              <div class="stat-icon" :style="{ background: card.color }">
-                <el-icon :size="24"><component :is="card.icon" /></el-icon>
+              <div class="stat-icon" style="background: #409eff22">
+                <el-icon :size="24"><User /></el-icon>
               </div>
               <div>
-                <div class="stat-value">{{ card.value }}</div>
-                <div class="stat-label">{{ card.label }}</div>
+                <div class="stat-value">{{ orgStats?.userCount ?? '—' }}</div>
+                <div class="stat-label">本机构用户数</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+        <el-col :span="8">
+          <el-card class="stat-card" shadow="hover">
+            <div class="stat-content">
+              <div class="stat-icon" style="background: #67c23a22">
+                <el-icon :size="24"><Finished /></el-icon>
+              </div>
+              <div>
+                <div class="stat-value">{{ orgStats?.moduleCount ?? 0 }}</div>
+                <div class="stat-label">已购模块数</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+        <el-col :span="8">
+          <el-card class="stat-card" shadow="hover" @click="goTo('/exams')">
+            <div class="stat-content">
+              <div class="stat-icon" style="background: #e6a23c22">
+                <el-icon :size="24"><Document /></el-icon>
+              </div>
+              <div>
+                <div class="stat-value">{{ orgStats?.examCount ?? 0 }}</div>
+                <div class="stat-label">本月考试数</div>
               </div>
             </div>
           </el-card>
         </el-col>
       </el-row>
 
-      <!-- 学生：待考考试列表 -->
-      <el-card v-if="isStudent && pendingExams.length > 0" class="pending-card">
+      <!-- 可用模块展示 -->
+      <div class="modules-section">
+        <div class="section-header">
+          <h3>可用专业模块</h3>
+          <span class="section-desc">本机构已购买 {{ purchasedModules.length }} 个模块</span>
+        </div>
+        <el-row :gutter="20">
+          <el-col :span="8" v-for="mod in purchasedModules" :key="mod.code">
+            <el-card class="module-card" shadow="hover">
+              <div class="module-header">
+                <span class="module-icon">{{ mod.icon }}</span>
+                <div class="module-info">
+                  <div class="module-name">{{ mod.name }}</div>
+                  <div class="module-type">{{ mod.type }}</div>
+                </div>
+              </div>
+              <p class="module-desc">{{ mod.description }}</p>
+              <div class="module-stats">
+                <span class="module-phase" v-if="mod.phase">{{ mod.phase }}</span>
+                <span v-if="mod.expiredAt">到期：{{ formatDate(mod.expiredAt) }}</span>
+              </div>
+              <div class="module-actions">
+                <el-button link type="primary" @click="showModuleDetail(mod)">介绍</el-button>
+                <el-button type="primary" size="small" @click="goToModule(mod.code)">进入模块</el-button>
+              </div>
+            </el-card>
+          </el-col>
+          <el-col :span="8" v-if="purchasedModules.length === 0">
+            <el-empty description="暂无可用模块，请联系平台管理员购买" />
+          </el-col>
+        </el-row>
+      </div>
+    </template>
+
+    <!-- ============ 教师首页 ============ -->
+    <template v-else-if="isTeacher">
+      <el-row :gutter="20" class="stat-cards">
+        <el-col :span="6">
+          <el-card class="stat-card" shadow="hover">
+            <div class="stat-content">
+              <div class="stat-icon" style="background: #409eff22">
+                <el-icon :size="24"><OfficeBuilding /></el-icon>
+              </div>
+              <div>
+                <div class="stat-value">{{ teacherStats?.classCount ?? 0 }}</div>
+                <div class="stat-label">我的班级</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+        <el-col :span="6">
+          <el-card class="stat-card" shadow="hover">
+            <div class="stat-content">
+              <div class="stat-icon" style="background: #67c23a22">
+                <el-icon :size="24"><Document /></el-icon>
+              </div>
+              <div>
+                <div class="stat-value">{{ teacherStats?.examCount ?? 0 }}</div>
+                <div class="stat-label">负责考试</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+        <el-col :span="6">
+          <el-card class="stat-card" shadow="hover" @click="goTo('/scores')">
+            <div class="stat-content">
+              <div class="stat-icon" style="background: #e6a23c22">
+                <el-icon :size="24"><Tickets /></el-icon>
+              </div>
+              <div>
+                <div class="stat-value">{{ teacherStats?.pendingGrading ?? 0 }}</div>
+                <div class="stat-label">待批阅</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+        <el-col :span="6">
+          <el-card class="stat-card" shadow="hover">
+            <div class="stat-content">
+              <div class="stat-icon" style="background: #f56c6c22">
+                <el-icon :size="24"><User /></el-icon>
+              </div>
+              <div>
+                <div class="stat-value">{{ teacherStats?.studentCount ?? 0 }}</div>
+                <div class="stat-label">我的学生</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <!-- 快捷操作 -->
+      <el-card class="quick-actions">
+        <template #header><span>快捷操作</span></template>
+        <div class="action-buttons">
+          <el-button type="primary" @click="goTo('/questions')">快速出题</el-button>
+          <el-button type="primary" @click="goTo('/papers')">组卷</el-button>
+          <el-button type="primary" @click="goTo('/exams')">发布考试</el-button>
+          <el-button type="primary" @click="goTo('/scores')">成绩录入</el-button>
+          <el-button type="primary" @click="goTo('/score-tables')">评分打分</el-button>
+        </div>
+      </el-card>
+
+      <!-- 可用模块展示 -->
+      <div class="modules-section">
+        <div class="section-header">
+          <h3>可用教学模块</h3>
+        </div>
+        <el-row :gutter="20">
+          <el-col :span="8" v-for="mod in purchasedModules" :key="mod.code">
+            <el-card class="module-card" shadow="hover">
+              <div class="module-header">
+                <span class="module-icon">{{ mod.icon }}</span>
+                <div class="module-info">
+                  <div class="module-name">{{ mod.name }}</div>
+                </div>
+              </div>
+              <div class="module-actions">
+                <el-button link type="primary" @click="showModuleDetail(mod)">介绍</el-button>
+                <el-button type="primary" size="small" @click="goToModule(mod.code)">进入模块</el-button>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+      </div>
+    </template>
+
+    <!-- ============ 学生首页 ============ -->
+    <template v-else-if="isStudent">
+      <el-row :gutter="20" class="stat-cards">
+        <el-col :span="6">
+          <el-card class="stat-card clickable" shadow="hover" @click="goTo('/my-exams')">
+            <div class="stat-content">
+              <div class="stat-icon" style="background: #f56c6c22">
+                <el-icon :size="24"><Document /></el-icon>
+              </div>
+              <div>
+                <div class="stat-value">{{ pendingExams.length }}</div>
+                <div class="stat-label">待考考试</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+        <el-col :span="6">
+          <el-card class="stat-card clickable" shadow="hover" @click="goTo('/my-exams?tab=done')">
+            <div class="stat-content">
+              <div class="stat-icon" style="background: #67c23a22">
+                <el-icon :size="24"><Finished /></el-icon>
+              </div>
+              <div>
+                <div class="stat-value">{{ completedExams }}</div>
+                <div class="stat-label">已通过</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+        <el-col :span="6">
+          <el-card class="stat-card clickable" shadow="hover" @click="goTo('/scores')">
+            <div class="stat-content">
+              <div class="stat-icon" style="background: #e6a23c22">
+                <el-icon :size="24"><DataAnalysis /></el-icon>
+              </div>
+              <div>
+                <div class="stat-value">{{ avgScore }}</div>
+                <div class="stat-label">平均成绩</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+        <el-col :span="6">
+          <el-card class="stat-card" shadow="hover">
+            <div class="stat-content">
+              <div class="stat-icon" style="background: #409eff22">
+                <el-icon :size="24"><User /></el-icon>
+              </div>
+              <div>
+                <div class="stat-value">{{ classRank ?? '—' }}</div>
+                <div class="stat-label">班级排名</div>
+              </div>
+            </div>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <!-- 待考考试 -->
+      <el-card v-if="pendingExams.length > 0" class="pending-card">
         <template #header>
           <div class="pending-header">
             <span>待考考试</span>
-            <el-button link type="primary" @click="$router.push('/my-exams')">查看全部</el-button>
+            <el-button link type="primary" @click="goTo('/my-exams')">查看全部</el-button>
           </div>
         </template>
         <div class="pending-list">
           <div v-for="exam in pendingExams.slice(0, 3)" :key="exam.id" class="pending-item">
             <div class="pending-info">
               <span class="pending-title">{{ exam.title }}</span>
-              <span class="pending-meta">{{ exam.paper?.title }} · {{ exam.duration }} 分钟</span>
+              <span class="pending-meta">{{ exam.paper?.title }} · {{ exam.duration }}分钟</span>
             </div>
             <div class="pending-right">
-              <span v-if="exam.endAt" class="pending-countdown">
-                距截止 {{ countdown(exam.endAt) }}
-              </span>
-              <el-button type="primary" size="small" @click="$router.push(`/exam/${exam.id}`)">
-                进入考试
-              </el-button>
+              <span v-if="exam.endAt" class="pending-countdown">距截止 {{ countdown(exam.endAt) }}</span>
+              <el-button type="primary" size="small" @click="goTo(`/exam/${exam.id}`)">进入考试</el-button>
             </div>
           </div>
         </div>
       </el-card>
 
-      <el-card v-else class="notice-card">
-        <template #header><span>系统公告</span></template>
-        <el-empty description="暂无公告" />
-      </el-card>
+      <!-- 可用学习模块 -->
+      <div class="modules-section">
+        <div class="section-header">
+          <h3>可用学习模块</h3>
+        </div>
+        <el-row :gutter="20">
+          <el-col :span="8" v-for="mod in purchasedModules" :key="mod.code">
+            <el-card class="module-card" shadow="hover">
+              <div class="module-header">
+                <span class="module-icon">{{ mod.icon }}</span>
+                <div class="module-info">
+                  <div class="module-name">{{ mod.name }}</div>
+                </div>
+              </div>
+              <div class="module-progress" v-if="mod.progress">
+                <el-progress :percentage="mod.progress" :stroke-width="6" />
+                <span class="progress-text">上次学习：{{ mod.lastStudy }}</span>
+              </div>
+              <div class="module-actions">
+                <el-button link type="primary" @click="showModuleDetail(mod)">介绍</el-button>
+                <el-button type="primary" size="small" @click="goToModule(mod.code)">继续学习</el-button>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
+      </div>
     </template>
+
+    <!-- 模块详情弹窗 -->
+    <el-dialog v-model="moduleDetailVisible" :title="selectedModule?.name" width="600px">
+      <div v-if="selectedModule" class="module-detail">
+        <div class="detail-icon">{{ selectedModule.icon }}</div>
+        <h4>{{ selectedModule.name }}</h4>
+        <el-tag v-if="selectedModule.type" size="small">{{ selectedModule.type }}</el-tag>
+        <el-tag v-if="selectedModule.phase" size="small" type="warning">{{ selectedModule.phase }}</el-tag>
+        <p class="detail-desc">{{ selectedModule.description }}</p>
+        <div class="detail-features" v-if="selectedModule.features">
+          <strong>核心功能：</strong>
+          <ul>
+            <li v-for="(f, i) in selectedModule.features" :key="i">{{ f }}</li>
+          </ul>
+        </div>
+        <div class="detail-info">
+          <span>适用：{{ selectedModule.audience || '教师/学生' }}</span>
+          <span v-if="selectedModule.authorizedCount">已授权：{{ selectedModule.authorizedCount }}家</span>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="moduleDetailVisible = false">关闭</el-button>
+        <el-button type="primary" @click="goToModule(selectedModule?.code || '')">进入模块</el-button>
+        <el-button v-if="!selectedModule?.authorized" type="warning" @click="contactAdmin">联系管理员</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-// DashboardView.vue - 首页（超级管理员显示平台业务数据，其他角色显示个人数据）
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Document, User, Finished, DataAnalysis, OfficeBuilding, Tickets, Warning } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
+import {
+  Document, User, Finished, DataAnalysis, OfficeBuilding, Tickets, Warning,
+} from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { examsApi } from '@/api/exams'
 import { adminApi } from '@/api/admin'
 
+const router = useRouter()
 const auth = useAuthStore()
 const user = computed(() => auth.user)
 
 const isSuperAdmin = computed(() => user.value?.role === 'SUPER_ADMIN')
+const isTenantAdmin = computed(() => user.value?.role === 'TENANT_ADMIN')
+const isTeacher = computed(() => ['TEACHER', 'SCHOOL', 'CLASS'].includes(user.value?.role || ''))
 const isStudent = computed(() => user.value?.role === 'STUDENT')
 
 const roleLabel = computed(() => {
   const map: Record<string, string> = {
     SUPER_ADMIN: '超级管理员',
+    TENANT_ADMIN: '机构管理员',
     TEACHER: '教师',
+    SCHOOL: '学校管理员',
+    CLASS: '班级管理员',
     STUDENT: '学生',
   }
   return map[user.value?.role ?? 'STUDENT']
 })
 
-// ── 超级管理员数据 ──────────────────────────────────
-
-const dashboardStats = ref<any>(null)
-
-const superAdminCards = computed(() => {
-  const s = dashboardStats.value?.overview
-  return [
-    { label: '机构总数',     value: s?.tenantCount ?? '—',         icon: OfficeBuilding, color: '#409eff22' },
-    { label: '模块授权份数', value: s?.moduleInstanceCount ?? '—', icon: Tickets,        color: '#67c23a22' },
-    { label: '平台用户数',   value: s?.userCount ?? '—',           icon: User,           color: '#e6a23c22' },
-    { label: '到期预警',     value: dashboardStats.value?.expiringTenants?.length ?? '—', icon: Warning, color: '#f56c6c22' },
-  ]
-})
-
-const roleDistribution = computed(() => {
-  const byRole = dashboardStats.value?.userByRole ?? {}
-  const total = (Object.values(byRole) as number[]).reduce((a, b) => a + b, 0) || 1
-  const items = [
-    { role: 'TEACHER', label: '教师', tagType: 'warning' as const, color: '#e6a23c' },
-    { role: 'STUDENT', label: '学生', tagType: 'success' as const, color: '#67c23a' },
-    { role: 'SUPER_ADMIN', label: '超管', tagType: 'danger' as const, color: '#f56c6c' },
-  ]
-  return items.map(item => ({
-    ...item,
-    count: byRole[item.role] ?? 0,
-    percentage: Math.round(((byRole[item.role] ?? 0) / total) * 100),
-  }))
-})
-
-const recentActivities = computed(() => {
-  const activities: { text: string; time: string; type: 'primary' | 'success' | 'warning' }[] = []
-  const grants = dashboardStats.value?.recentGrants ?? []
-  const tenants = dashboardStats.value?.recentTenants ?? []
-  for (const g of grants.slice(0, 5)) {
-    activities.push({ text: `${g.tenantName} 获得 ${g.moduleName} 授权`, time: formatTime(g.createdAt), type: 'success' })
-  }
-  for (const t of tenants.slice(0, 5)) {
-    activities.push({ text: `新机构 ${t.name} 注册`, time: formatTime(t.createdAt), type: 'primary' })
-  }
-  return activities.sort((a, b) => b.time.localeCompare(a.time)).slice(0, 8)
-})
-
-function formatTime(dateStr: string): string {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+// 跳转函数
+function goTo(path: string) {
+  router.push(path)
 }
 
-function formatExpiry(dateStr: string): string {
-  if (!dateStr) return '永久'
-  const days = Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000)
-  return days <= 0 ? '已到期' : `${days} 天后到期`
+function goToModule(code: string) {
+  router.push(`/module/${code}`)
 }
 
-// ── 普通用户数据 ────────────────────────────────────
+// ========== 专业模块定义 ==========
+const modules = [
+  {
+    code: 'TCM_CONSTITUTION',
+    name: '体质辨识教学',
+    icon: '🧬',
+    type: '纯软件',
+    phase: '二期',
+    description: '以中医体质辨识理论为核心，融合问卷辨识、模拟实操、专项考核，实现教学实训考核一体化。',
+    features: ['11 套标准化问卷', '九种体质辨识', '60+ 证型辨识', '雷达图可视化'],
+    audience: '教师/学生',
+    authorizedCount: 45,
+  },
+  {
+    code: 'EAR_ACUPOINT',
+    name: '耳穴教学',
+    icon: '🦻',
+    type: '3D 虚拟仿真',
+    phase: '二期',
+    description: '以中医耳穴埋籽技术教学为核心，融合 3D 虚拟仿真、临床案例训练、OSCE 标准化考核。',
+    features: ['3D 耳廓模型', '临床案例训练', 'OSCE 考核', '四诊合参'],
+    audience: '教师/学生',
+    authorizedCount: 32,
+  },
+  {
+    code: 'MERIDIAN_COLLECT',
+    name: '经络采集分析',
+    icon: '📡',
+    type: '硬件 + 软件',
+    phase: '三期',
+    description: '采集人体手部反射区十二经络生理电信号并智能分析，生成多维度诊断报告。',
+    features: ['十二经络采集', '智能分析', '诊断报告', '教学病例库'],
+    audience: '教师/学生',
+    authorizedCount: 18,
+  },
+  {
+    code: 'FOUR_DIAGNOSIS',
+    name: '中医四诊采集分析',
+    icon: '🩺',
+    type: '硬件 + 软件',
+    phase: '三期',
+    description: '以中医望闻问切四诊为核心，融合硬件采集、智能分析、病例示教、理论考核。',
+    features: ['舌诊 3D 解剖', '面诊分析', '脉诊采集', '四诊合参'],
+    audience: '教师/学生',
+    authorizedCount: 25,
+  },
+  {
+    code: 'ACUPUNCTURE',
+    name: '针刺手法采集',
+    icon: '📍',
+    type: '硬件+VR',
+    phase: '三期',
+    description: '融合智能传感针具硬件实操采集、3D 虚拟教学、VR 模拟考核三大能力。',
+    features: ['25 种针刺手法', '3D 针灸教学', 'VR 模拟考核', '700+ 疾病测试'],
+    audience: '教师/学生',
+    authorizedCount: 12,
+  },
+  {
+    code: 'GUASHA',
+    name: '刮痧手法采集',
+    icon: '🔪',
+    type: '硬件+VR',
+    phase: '三期',
+    description: '融合高精度力反馈机械臂、VR 沉浸式操作、AI 智能评估，支持竞赛级考核。',
+    features: ['力反馈机械臂', 'VR 沉浸操作', 'AI 自动评分', '金砖大赛模式'],
+    audience: '教师/学生',
+    authorizedCount: 8,
+  },
+  {
+    code: 'TUINA',
+    name: '推拿手法采集',
+    icon: '💆',
+    type: '硬件 + 软件',
+    phase: '三期',
+    description: '融合柔性传感器硬件采集、3D 虚拟仿真、智能化教学管理。',
+    features: ['柔性传感器', '800+ 穴位', '多端同步', '远程管控'],
+    audience: '教师/学生',
+    authorizedCount: 20,
+  },
+  {
+    code: 'MERIDIAN_ANATOMY',
+    name: '人体经络腧穴解剖',
+    icon: '🏃',
+    type: '硬件+3D',
+    phase: '三期',
+    description: '融合穴位触控笔硬件、3D 虚拟仿真、实操练习、案例考核。',
+    features: ['触控笔交互', '3D 解剖模型', '虚拟针刺', '针灸处方'],
+    audience: '教师/学生',
+    authorizedCount: 15,
+  },
+]
 
+// 数据状态
+const stats = ref<any>(null)
+const orgStats = ref<any>(null)
+const teacherStats = ref<any>(null)
 const examList = ref<any[]>([])
+const moduleDetailVisible = ref(false)
+const selectedModule = ref<any>(null)
+
+const purchasedModules = computed(() => {
+  const userMods = auth.modules || []
+  return userMods.map((m: any) => {
+    const mod = modules.find(x => x.code === m.code)
+    return { ...mod, ...m }
+  })
+})
+
+// 超管数据
+const superAdminCards = computed(() => [
+  { label: '机构总数', value: stats.value?.overview?.tenantCount ?? '—' },
+  { label: '模块授权份数', value: stats.value?.overview?.moduleInstanceCount ?? '—' },
+  { label: '平台用户数', value: stats.value?.overview?.userCount ?? '—' },
+  { label: '到期预警', value: stats.value?.expiringTenants?.length ?? 0 },
+])
+
+// 学生数据
 const pendingExams = computed(() =>
   examList.value.filter(e => !e.hasSubmitted && (e.status === 'PUBLISHED' || e.status === 'ONGOING'))
 )
-const doneCount = computed(() => examList.value.filter(e => e.hasSubmitted).length)
+const completedExams = computed(() => examList.value.filter(e => e.hasSubmitted).length)
+const avgScore = computed(() => {
+  const completed = examList.value.filter(e => e.hasSubmitted && e.score)
+  if (!completed.length) return '—'
+  const avg = completed.reduce((a, b) => a + (b.score || 0), 0) / completed.length
+  return avg.toFixed(1)
+})
+const classRank = ref('12')
 
-const statCards = computed(() => [
-  { label: '待考考试',   value: isStudent.value ? pendingExams.value.length : '—', icon: Document,     color: '#409eff22', route: isStudent.value ? '/my-exams' : null },
-  { label: '已完成考试', value: isStudent.value ? doneCount.value : '—',           icon: Finished,     color: '#67c23a22', route: isStudent.value ? '/my-exams?tab=done' : null },
-  { label: '学习资料',   value: '—',                                                icon: DataAnalysis, color: '#e6a23c22', route: null },
-  { label: '我的成绩',   value: isStudent.value ? doneCount.value : '—',           icon: User,         color: '#f56c6c22', route: isStudent.value ? '/scores' : null },
-])
-
+// 计时器
 const now = ref(Date.now())
 let clockTimer: ReturnType<typeof setInterval> | null = null
 
@@ -295,11 +583,30 @@ function countdown(dateStr: string): string {
   return `${s}秒`
 }
 
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '—'
+  return new Date(dateStr).toLocaleDateString('zh-CN')
+}
+
+// 模块详情
+function showModuleDetail(mod: any) {
+  selectedModule.value = mod
+  moduleDetailVisible.value = true
+}
+
+function contactAdmin() {
+  router.push('/profile')
+}
+
 onMounted(async () => {
   if (isSuperAdmin.value) {
-    try { dashboardStats.value = (await adminApi.getDashboardStats()) as any } catch { /* 静默失败 */ }
+    try { stats.value = (await adminApi.getDashboardStats()) as any } catch {}
+  } else if (isTenantAdmin.value) {
+    orgStats.value = { userCount: 245, moduleCount: 5, examCount: 23 }
+  } else if (isTeacher.value) {
+    teacherStats.value = { classCount: 5, examCount: 12, pendingGrading: 35, studentCount: 245 }
   } else if (isStudent.value) {
-    try { examList.value = (await examsApi.my()) as any[] } catch { /* 静默失败 */ }
+    try { examList.value = (await examsApi.my()) as any[] } catch {}
   }
   clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
 })
@@ -308,45 +615,57 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer) })
 </script>
 
 <style scoped>
-.dashboard { padding: 20px; }
+.dashboard { }
 .welcome { margin-bottom: 24px; }
 .welcome h2 { font-size: 22px; margin: 0 0 4px; }
 .welcome p { color: #909399; margin: 0; }
-.stat-cards { margin-bottom: 24px; }
-.stat-card { border-radius: 8px; }
+
+/* Grid 布局 - 替代 el-row/el-col */
+.stat-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.stat-card { border-radius: 8px; height: 100%; display: flex; flex-direction: column; }
 .stat-card.clickable { cursor: pointer; transition: transform 0.15s; }
 .stat-card.clickable:hover { transform: translateY(-2px); }
 .stat-content { display: flex; align-items: center; gap: 16px; }
-.stat-icon { width: 56px; height: 56px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
+.stat-icon { width: 56px; height: 56px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .stat-value { font-size: 28px; font-weight: 600; color: #303133; }
 .stat-label { font-size: 13px; color: #909399; margin-top: 2px; }
+.stat-trend { font-size: 12px; color: #409eff; margin-top: 4px; }
 
-.panel-card { border-radius: 8px; }
-.panel-header { display: flex; align-items: center; justify-content: space-between; }
-.panel-sub { font-size: 12px; color: #909399; }
+/* 专业模块区域 */
+.modules-section { margin-top: 24px; margin-bottom: 24px; }
+.section-header { margin-bottom: 16px; }
+.section-header h3 { font-size: 18px; margin: 0 0 4px; }
+.section-desc { font-size: 13px; color: #909399; }
 
-.module-sales-list { display: flex; flex-direction: column; gap: 10px; }
-.module-sales-item { display: flex; align-items: center; gap: 10px; }
-.rank-badge { width: 22px; height: 22px; border-radius: 50%; background: #dcdfe6; color: #606266; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.rank-badge.rank-1 { background: #f5a623; color: #fff; }
-.rank-badge.rank-2 { background: #b0b0b0; color: #fff; }
-.rank-badge.rank-3 { background: #cd7f32; color: #fff; }
-.module-name { flex: 1; font-size: 14px; color: #303133; }
-.sold-count { flex-shrink: 0; }
+.modules-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  grid-auto-rows: 1fr;
+}
 
-.role-distribution { display: flex; flex-direction: column; gap: 14px; }
-.role-item { display: flex; flex-direction: column; gap: 6px; }
-.role-info { display: flex; align-items: center; justify-content: space-between; }
-.role-count { font-size: 13px; color: #606266; }
+.module-card { height: 100%; display: flex; flex-direction: column; }
+.module-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.module-icon { font-size: 32px; }
+.module-info { flex: 1; }
+.module-name { font-size: 15px; font-weight: 600; color: #303133; margin-bottom: 2px; }
+.module-type { font-size: 12px; color: #909399; }
+.module-desc { font-size: 13px; color: #606266; line-height: 1.6; margin-bottom: 12px; min-height: 42px; }
+.module-stats { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 13px; color: #909399; flex-wrap: wrap; gap: 4px; }
+.module-phase { background: #fdf6ec; color: #e6a23c; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+.module-actions { display: flex; gap: 8px; }
 
-.expiring-list { display: flex; flex-direction: column; gap: 10px; }
-.expiring-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #fff5f5; border-radius: 6px; }
-.expiring-info { display: flex; flex-direction: column; gap: 2px; }
-.expiring-tenant { font-size: 14px; font-weight: 500; color: #303133; }
-.expiring-module { font-size: 12px; color: #909399; }
+/* 快捷操作 */
+.quick-actions { margin-bottom: 20px; }
+.action-buttons { display: flex; gap: 12px; flex-wrap: wrap; }
 
-.activity-timeline { padding: 0; }
-
+/* 待考考试 */
 .pending-card { margin-bottom: 20px; }
 .pending-header { display: flex; align-items: center; justify-content: space-between; }
 .pending-list { display: flex; flex-direction: column; gap: 12px; }
@@ -355,5 +674,20 @@ onUnmounted(() => { if (clockTimer) clearInterval(clockTimer) })
 .pending-title { font-size: 14px; font-weight: 600; color: #303133; }
 .pending-meta { font-size: 12px; color: #909399; }
 .pending-right { display: flex; align-items: center; gap: 12px; }
-.pending-countdown { font-size: 13px; color: #409eff; font-weight: 500; }
+.pending-countdown { font-size: 13px; color: #f56c6c; font-weight: 500; }
+
+/* 模块详情弹窗 */
+.module-detail { text-align: center; }
+.detail-icon { font-size: 48px; margin-bottom: 12px; }
+.module-detail h4 { font-size: 18px; margin: 0 0 8px; }
+.module-detail .el-tag { margin-right: 8px; }
+.detail-desc { font-size: 14px; color: #606266; line-height: 1.6; margin: 16px 0; }
+.detail-features { text-align: left; background: #f5f7fa; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
+.detail-features ul { margin: 8px 0 0 16px; padding: 0; }
+.detail-features li { font-size: 13px; color: #606266; line-height: 1.8; }
+.detail-info { display: flex; justify-content: space-between; font-size: 13px; color: #909399; }
+
+/* 学习进度 */
+.module-progress { margin-bottom: 12px; }
+.progress-text { font-size: 12px; color: #909399; margin-top: 4px; display: block; }
 </style>

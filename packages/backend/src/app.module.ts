@@ -11,6 +11,7 @@ import { ExamRoomModule } from './modules/exam-room/exam-room.module';
 import { ScoresModule } from './modules/scores/scores.module';
 import { ScoreTablesModule } from './modules/score-tables/score-tables.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { AiModule } from './modules/ai/ai.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AdminModule } from './modules/admin/admin.module';
     ScoresModule,
     ScoreTablesModule,
     AdminModule,
+    AiModule,
   ],
 })
 export class AppModule {}

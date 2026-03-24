@@ -1,5 +1,6 @@
 import {
-  IsString, IsNotEmpty, IsOptional, IsEnum, IsEmail, IsMobilePhone, MinLength,
+  IsString, IsNotEmpty, IsOptional, IsEnum, IsEmail, MinLength,
+  IsArray, IsBoolean, Matches,
 } from 'class-validator'
 import { Type } from 'class-transformer'
 import { UserRole } from '@prisma/client'
@@ -25,7 +26,7 @@ export class CreateUserDto {
   @IsOptional()
   studentNo?: string
 
-  @IsString()
+  @Matches(/^1[3-9]\d{9}$/, { message: '手机号格式不正确' })
   @IsOptional()
   phone?: string
 
@@ -36,6 +37,10 @@ export class CreateUserDto {
   @IsString()
   @IsOptional()
   organizationId?: string
+
+  @IsArray()
+  @IsOptional()
+  organizationIds?: string[]
 }
 
 export class UpdateUserDto {
@@ -51,7 +56,7 @@ export class UpdateUserDto {
   @IsOptional()
   studentNo?: string
 
-  @IsString()
+  @Matches(/^1[3-9]\d{9}$/, { message: '手机号格式不正确' })
   @IsOptional()
   phone?: string
 
@@ -62,6 +67,10 @@ export class UpdateUserDto {
   @IsString()
   @IsOptional()
   organizationId?: string
+
+  @IsArray()
+  @IsOptional()
+  organizationIds?: string[]
 
   @IsOptional()
   isActive?: boolean
@@ -117,4 +126,23 @@ export class ImportUserDto {
   @IsString()
   @IsOptional()
   organizationName?: string
+}
+
+export class BatchStatusDto {
+  @IsArray()
+  @IsNotEmpty({ message: '请选择用户' })
+  ids: string[]
+
+  @IsBoolean()
+  isActive: boolean
+}
+
+export class BatchPasswordDto {
+  @IsArray()
+  @IsNotEmpty({ message: '请选择用户' })
+  ids: string[]
+
+  @IsString()
+  @MinLength(6, { message: '密码至少6位' })
+  password: string
 }

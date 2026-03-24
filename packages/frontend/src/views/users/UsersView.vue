@@ -41,12 +41,28 @@
           <div class="left">
             <el-button type="primary" :icon="Plus" @click="openCreate">新增用户</el-button>
             <el-button :icon="Upload" @click="importDialogVisible = true">批量导入</el-button>
+            <el-button :icon="Download" @click="handleExport">导出 Excel</el-button>
             <el-button
               type="danger"
               :disabled="selectedIds.length === 0"
-              @click="handleBatchRemove"
+              @click="handleBatchDisable"
             >
               批量禁用 ({{ selectedIds.length }})
+            </el-button>
+            <el-button
+              type="danger"
+              :disabled="selectedIds.length === 0"
+              plain
+              @click="handleBatchForceDelete"
+            >
+              批量彻底删除 ({{ selectedIds.length }})
+            </el-button>
+            <el-button
+              type="warning"
+              :disabled="selectedIds.length === 0"
+              @click="openBatchResetPwd"
+            >
+              批量重置密码 ({{ selectedIds.length }})
             </el-button>
           </div>
           <span class="total">共 {{ total }} 条</span>
@@ -81,13 +97,17 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
             <el-button link type="warning" size="small" @click="openResetPwd(row)">重置密码</el-button>
-            <el-button link type="danger" size="small" @click="handleRemove(row)">
-              {{ row.isActive ? '禁用' : '启用' }}
-            </el-button>
+            <template v-if="row.isActive">
+              <el-button link type="danger" size="small" @click="handleRemove(row)">禁用</el-button>
+            </template>
+            <template v-else>
+              <el-button link type="success" size="small" @click="handleRestore(row)">恢复</el-button>
+              <el-button link type="danger" size="small" @click="handleForceDelete(row)">彻底删除</el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -130,7 +150,7 @@
           <el-input v-model="userForm.email" />
         </el-form-item>
         <el-form-item label="所属组织">
-          <el-select v-model="userForm.organizationId" clearable style="width: 100%">
+          <el-select v-model="userForm.organizationIds" multiple clearable style="width: 100%" placeholder="可选择多个组织">
             <el-option
               v-for="org in orgList"
               :key="org.id"
@@ -160,30 +180,23 @@
     </el-dialog>
 
     <!-- 批量导入弹窗 -->
-    <el-dialog v-model="importDialogVisible" title="批量导入用户" width="480px">
+    <el-dialog v-model="importDialogVisible" title="批量导入用户" width="520px">
       <div class="import-tips">
-        <p>请上传 JSON 文件，格式如下：</p>
-        <pre class="import-example">[
-  {
-    "username": "zhangsan",
-    "realName": "张三",
-    "password": "123456",
-    "role": "STUDENT",
-    "studentNo": "2024001",
-    "phone": "13800000001",
-    "organizationName": "针灸专业"
-  }
-]</pre>
-        <p class="tip-note">若不填 password，默认为 123456</p>
+        <p>支持 Excel (.xlsx) 或 JSON (.json) 格式导入</p>
+        <p class="tip-note">Excel 表头：用户名 | 姓名 | 密码 | 角色 | 学号 | 手机 | 组织</p>
+        <p class="tip-note">若不填密码，默认为 123456；角色可填：学生、教师、班级管理员等</p>
       </div>
-      <el-upload
-        accept=".json"
-        :auto-upload="false"
-        :show-file-list="false"
-        :on-change="handleImportFile"
-      >
-        <el-button type="primary" :icon="Upload">选择 JSON 文件</el-button>
-      </el-upload>
+      <div class="import-actions">
+        <el-upload
+          accept=".json,.xlsx"
+          :auto-upload="false"
+          :show-file-list="false"
+          :on-change="handleImportFile"
+        >
+          <el-button type="primary" :icon="Upload">选择文件</el-button>
+        </el-upload>
+        <el-button link type="primary" @click="downloadTemplate">下载 Excel 模板</el-button>
+      </div>
       <div v-if="importResult" class="import-result">
         <el-alert
           :title="`导入完成：成功 ${importResult.success} 条，失败 ${importResult.failed} 条`"
@@ -196,13 +209,27 @@
         </ul>
       </div>
     </el-dialog>
+
+    <!-- 批量重置密码弹窗 -->
+    <el-dialog v-model="batchPwdVisible" title="批量重置密码" width="380px">
+      <p style="margin-bottom: 12px; color: #909399;">将为选中的 {{ selectedIds.length }} 个用户统一设置新密码</p>
+      <el-form ref="batchPwdFormRef" :model="batchPwdForm" :rules="pwdRules" label-width="80px">
+        <el-form-item label="新密码" prop="password">
+          <el-input v-model="batchPwdForm.password" type="password" show-password placeholder="至少6位" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchPwdVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleBatchResetPwd">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Search, Plus, Upload } from '@element-plus/icons-vue'
+import { Search, Plus, Upload, Download } from '@element-plus/icons-vue'
 import { usersApi, type User } from '@/api/users'
 import { organizationsApi } from '@/api/organizations'
 import { useAuthStore } from '@/stores/auth'
@@ -279,19 +306,92 @@ function handleSelectionChange(rows: User[]) {
   selectedIds.value = rows.map((r) => r.id)
 }
 
-async function handleBatchRemove() {
-  await ElMessageBox.confirm(`确定禁用选中的 ${selectedIds.value.length} 个用户吗？`, '提示', { type: 'warning' })
-  await usersApi.batchRemove(selectedIds.value)
-  ElMessage.success('操作成功')
+async function handleBatchDisable() {
+  await ElMessageBox.confirm(`确定禁用选中的 ${selectedIds.value.length} 个用户吗？禁用后用户无法登录，但数据保留。`, '提示', { type: 'warning' })
+  await usersApi.batchStatus(selectedIds.value, false)
+  ElMessage.success('批量禁用成功')
   await loadUsers()
 }
 
-async function handleRemove(row: User) {
-  const action = row.isActive ? '禁用' : '启用'
-  await ElMessageBox.confirm(`确定${action}用户「${row.realName}」吗？`, '提示', { type: 'warning' })
-  await usersApi.update(row.id, { isActive: !row.isActive })
-  ElMessage.success(`${action}成功`)
+async function handleBatchForceDelete() {
+  await ElMessageBox.confirm(`确定彻底删除选中的 ${selectedIds.value.length} 个用户吗？此操作不可恢复！\n\n注意：只删除已禁用的用户，正常用户会被跳过。`, '危险操作', {
+    type: 'error',
+    confirmButtonText: '确定删除',
+    cancelButtonText: '取消',
+  })
+
+  let successCount = 0
+  let failCount = 0
+  const errors: string[] = []
+
+  // 只删除已禁用的用户
+  const disabledIds = selectedIds.value.filter(id => {
+    const user = userList.value.find(u => u.id === id)
+    return user && !user.isActive
+  })
+
+  if (disabledIds.length === 0) {
+    ElMessage.warning('没有可选的已禁用用户')
+    return
+  }
+
+  for (const id of disabledIds) {
+    try {
+      await usersApi.forceDelete(id)
+      successCount++
+    } catch (e: any) {
+      failCount++
+      const user = userList.value.find(u => u.id === id)
+      errors.push(`${user?.realName ?? id}: ${e.message || '删除失败'}`)
+    }
+  }
+
+  let msg = `删除完成：成功 ${successCount} 个，失败 ${failCount} 个`
+  if (errors.length) {
+    msg += '\n' + errors.join('\n')
+  }
+
+  if (failCount > 0) {
+    await ElMessageBox.alert(msg, '批量删除结果', { type: 'warning' })
+  } else {
+    ElMessage.success(msg)
+  }
   await loadUsers()
+}
+
+async function handleExport() {
+  const res = await usersApi.exportExcel(query) as any
+  const url = window.URL.createObjectURL(new Blob([res]))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'users.xlsx'
+  a.click()
+  window.URL.revokeObjectURL(url)
+}
+
+async function handleRemove(row: User) {
+  await ElMessageBox.confirm(`确定禁用用户「${row.realName}」吗？禁用后该用户无法登录，但数据保留。`, '提示', { type: 'warning' })
+  await usersApi.update(row.id, { isActive: false })
+  ElMessage.success('已禁用')
+  await loadUsers()
+}
+
+async function handleRestore(row: User) {
+  await ElMessageBox.confirm(`确定恢复用户「${row.realName}」吗？`, '提示', { type: 'warning' })
+  await usersApi.update(row.id, { isActive: true })
+  ElMessage.success('已恢复')
+  await loadUsers()
+}
+
+async function handleForceDelete(row: User) {
+  try {
+    await usersApi.forceDelete(row.id)
+    ElMessage.success('已彻底删除')
+    await loadUsers()
+  } catch (e: any) {
+    const msg = e.message || e.response?.data?.message
+    await ElMessageBox.alert(msg || '删除失败', '删除失败', { type: 'error' })
+  }
 }
 
 // ── 新增/编辑 ─────────────────────────────────────────────
@@ -301,7 +401,7 @@ const submitting = ref(false)
 const formRef = ref<FormInstance>()
 const userForm = reactive({
   username: '', password: '', realName: '', role: 'STUDENT' as any,
-  studentNo: '', phone: '', email: '', organizationId: '',
+  studentNo: '', phone: '', email: '', organizationIds: [] as string[],
 })
 const userRules: FormRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
@@ -312,7 +412,7 @@ const userRules: FormRules = {
 
 function openCreate() {
   editId.value = null
-  Object.assign(userForm, { username: '', password: '', realName: '', role: 'STUDENT', studentNo: '', phone: '', email: '', organizationId: '' })
+  Object.assign(userForm, { username: '', password: '', realName: '', role: 'STUDENT', studentNo: '', phone: '', email: '', organizationIds: [] })
   formDialogVisible.value = true
 }
 
@@ -326,7 +426,7 @@ function openEdit(row: User) {
     studentNo: row.studentNo ?? '',
     phone: row.phone ?? '',
     email: row.email ?? '',
-    organizationId: row.userOrgs[0]?.organization.id ?? '',
+    organizationIds: row.userOrgs.map((o: any) => o.organization.id),
   })
   formDialogVisible.value = true
 }
@@ -340,7 +440,7 @@ async function handleUserSubmit() {
       await usersApi.update(editId.value, rest)
       ElMessage.success('更新成功')
     } else {
-      await usersApi.create(userForm)
+      await usersApi.create({ ...userForm, organizationId: undefined } as any)
       ElMessage.success('创建成功')
     }
     formDialogVisible.value = false
@@ -386,19 +486,64 @@ const importDialogVisible = ref(false)
 const importResult = ref<{ success: number; failed: number; errors: string[] } | null>(null)
 
 async function handleImportFile(file: any) {
-  const text = await file.raw.text()
-  let rows: any[]
-  try {
-    rows = JSON.parse(text)
-    if (!Array.isArray(rows)) throw new Error()
-  } catch {
-    ElMessage.error('JSON 格式错误')
+  importResult.value = null
+  const rawFile = file.raw as File
+  const ext = rawFile.name.split('.').pop()?.toLowerCase()
+
+  if (ext === 'xlsx') {
+    const res = await usersApi.importExcel(rawFile) as any
+    importResult.value = res
+  } else if (ext === 'json') {
+    const text = await rawFile.text()
+    let rows: any[]
+    try {
+      rows = JSON.parse(text)
+      if (!Array.isArray(rows)) throw new Error()
+    } catch {
+      ElMessage.error('JSON 格式错误')
+      return
+    }
+    const res = await usersApi.batchImport(rows) as any
+    importResult.value = res
+  } else {
+    ElMessage.error('仅支持 .xlsx 或 .json 格式')
     return
   }
-  importResult.value = null
-  const res = await usersApi.batchImport(rows) as any
-  importResult.value = res
   await loadUsers()
+}
+
+function downloadTemplate() {
+  const header = '用户名,姓名,密码,角色,学号,手机,组织\n'
+  const example = 'zhangsan,张三,123456,学生,2024001,13800000001,针灸专业\n'
+  const blob = new Blob(['\uFEFF' + header + example], { type: 'text/csv;charset=utf-8' })
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = '用户导入模板.csv'
+  a.click()
+  window.URL.revokeObjectURL(url)
+}
+
+// ── 批量重置密码 ──────────────────────────────────────────
+const batchPwdVisible = ref(false)
+const batchPwdFormRef = ref<FormInstance>()
+const batchPwdForm = reactive({ password: '' })
+
+function openBatchResetPwd() {
+  batchPwdForm.password = ''
+  batchPwdVisible.value = true
+}
+
+async function handleBatchResetPwd() {
+  await batchPwdFormRef.value?.validate()
+  submitting.value = true
+  try {
+    await usersApi.batchPassword(selectedIds.value, batchPwdForm.password)
+    ElMessage.success(`已为 ${selectedIds.value.length} 个用户重置密码`)
+    batchPwdVisible.value = false
+  } finally {
+    submitting.value = false
+  }
 }
 
 onMounted(() => {
@@ -457,5 +602,11 @@ onMounted(() => {
   color: #e6a23c;
   max-height: 120px;
   overflow-y: auto;
+}
+.import-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 </style>

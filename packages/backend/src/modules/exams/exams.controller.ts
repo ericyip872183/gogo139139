@@ -50,6 +50,12 @@ export class ExamsController {
     return this.service.cancel(user.tenantId, id)
   }
 
+  @Post(':id/clone')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  clone(@CurrentUser() user: { tenantId: string }, @Param('id') id: string) {
+    return this.service.clone(user.tenantId, id)
+  }
+
   @Post(':id/participants')
   @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
   addParticipants(

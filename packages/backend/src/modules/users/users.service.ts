@@ -4,8 +4,10 @@ import {
   ConflictException,
   BadRequestException,
   ForbiddenException,
+  StreamableFile,
 } from '@nestjs/common'
 import * as bcrypt from 'bcrypt'
+import * as ExcelJS from 'exceljs'
 import { PrismaService } from '../../prisma/prisma.service'
 import { CreateUserDto, UpdateUserDto, QueryUserDto, ImportUserDto } from './dto/user.dto'
 import { UserRole } from '@prisma/client'
@@ -136,10 +138,9 @@ export class UsersService {
           email: dto.email,
         },
       })
-      if (dto.organizationId) {
-        await tx.userOrg.create({
-          data: { userId: user.id, organizationId: dto.organizationId },
-        })
+      const orgIds = dto.organizationIds?.length ? dto.organizationIds : dto.organizationId ? [dto.organizationId] : []
+      for (const orgId of orgIds) {
+        await tx.userOrg.create({ data: { userId: user.id, organizationId: orgId } })
       }
       return user
     })
@@ -156,16 +157,15 @@ export class UsersService {
       throw new ForbiddenException('只能将角色设置为低于自身的层级')
     }
 
-    const { organizationId, ...rest } = dto
+    const { organizationId, organizationIds, ...rest } = dto
 
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.update({ where: { id }, data: rest })
-      if (organizationId !== undefined) {
+      const newOrgIds = organizationIds?.length ? organizationIds : organizationId !== undefined ? (organizationId ? [organizationId] : []) : undefined
+      if (newOrgIds !== undefined) {
         await tx.userOrg.deleteMany({ where: { userId: id } })
-        if (organizationId) {
-          await tx.userOrg.create({
-            data: { userId: id, organizationId },
-          })
+        for (const orgId of newOrgIds) {
+          await tx.userOrg.create({ data: { userId: id, organizationId: orgId } })
         }
       }
       return user
@@ -257,6 +257,111 @@ export class UsersService {
     return user
   }
 
+  // ── 批量激活/停用 ────────────────────────────────────
+
+  async batchStatus(tenantId: string, ids: string[], isActive: boolean) {
+    const result = await this.prisma.user.updateMany({
+      where: { id: { in: ids }, tenantId },
+      data: { isActive },
+    })
+    return { count: result.count }
+  }
+
+  // ── 批量设置密码 ────────────────────────────────────
+
+  async batchPassword(tenantId: string, ids: string[], password: string) {
+    const hashed = await bcrypt.hash(password, 10)
+    const result = await this.prisma.user.updateMany({
+      where: { id: { in: ids }, tenantId },
+      data: { password: hashed },
+    })
+    return { count: result.count }
+  }
+
+  // ── Excel 导出 ──────────────────────────────────────
+
+  async exportExcel(tenantId: string, query: QueryUserDto, callerRole: UserRole): Promise<StreamableFile> {
+    const q = { ...query, page: 1, pageSize: 10000 }
+    const { list } = await this.findAll(tenantId, q, callerRole)
+
+    const workbook = new ExcelJS.Workbook()
+    const sheet = workbook.addWorksheet('用户列表')
+    sheet.columns = [
+      { header: '用户名', key: 'username', width: 15 },
+      { header: '姓名', key: 'realName', width: 15 },
+      { header: '角色', key: 'role', width: 12 },
+      { header: '学号', key: 'studentNo', width: 15 },
+      { header: '手机', key: 'phone', width: 15 },
+      { header: '邮箱', key: 'email', width: 20 },
+      { header: '所属组织', key: 'organizations', width: 25 },
+      { header: '状态', key: 'status', width: 8 },
+    ]
+
+    const roleMap: Record<string, string> = {
+      SUPER_ADMIN: '超级管理员', TENANT_ADMIN: '机构管理员', SCHOOL: '学校管理员',
+      CLASS: '班级管理员', TEACHER: '教师', STUDENT: '学生',
+    }
+
+    for (const u of list as any[]) {
+      sheet.addRow({
+        username: u.username,
+        realName: u.realName,
+        role: roleMap[u.role] ?? u.role,
+        studentNo: u.studentNo ?? '',
+        phone: u.phone ?? '',
+        email: u.email ?? '',
+        organizations: u.userOrgs?.map((o: any) => o.organization.name).join('、') ?? '',
+        status: u.isActive ? '正常' : '禁用',
+      })
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    return new StreamableFile(new Uint8Array(buffer), {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: 'attachment; filename="users.xlsx"',
+    })
+  }
+
+  // ── Excel 导入 ──────────────────────────────────────
+
+  async importExcel(tenantId: string, fileBuffer: Buffer) {
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.load(fileBuffer as any)
+    const sheet = workbook.worksheets[0]
+    if (!sheet) throw new BadRequestException('Excel 文件为空')
+
+    const rows: ImportUserDto[] = []
+    const headerRow = sheet.getRow(1)
+    const headers: string[] = []
+    headerRow.eachCell((cell) => { headers.push(String(cell.value ?? '').trim()) })
+
+    const colMap: Record<string, string> = {
+      '用户名': 'username', '姓名': 'realName', '密码': 'password',
+      '角色': 'role', '学号': 'studentNo', '手机': 'phone', '组织': 'organizationName',
+    }
+    const roleReverseMap: Record<string, string> = {
+      '超级管理员': 'SUPER_ADMIN', '机构管理员': 'TENANT_ADMIN', '学校管理员': 'SCHOOL',
+      '班级管理员': 'CLASS', '教师': 'TEACHER', '学生': 'STUDENT',
+    }
+
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return
+      const item: any = {}
+      row.eachCell((cell, colNumber) => {
+        const header = headers[colNumber - 1]
+        const field = colMap[header]
+        if (field) {
+          let val = String(cell.value ?? '').trim()
+          if (field === 'role') val = roleReverseMap[val] ?? val
+          item[field] = val
+        }
+      })
+      if (item.username && item.realName) rows.push(item)
+    })
+
+    return this.batchImport(tenantId, rows)
+  }
+
   // ── 个人中心 ────────────────────────────────────
 
   /**
@@ -291,5 +396,42 @@ export class UsersService {
       data: { password: hashed },
     })
     return { message: '密码修改成功' }
+  }
+
+  // ── 彻底删除（带关联检查）────────────────────────
+
+  /**
+   * 检查用户是否可以被彻底删除
+   */
+  async checkCanDelete(userId: string) {
+    const [examAnswers, scoreRecords, asJudge] = await Promise.all([
+      this.prisma.examAnswer.findFirst({ where: { userId } }),
+      this.prisma.scoreRecord.findFirst({ where: { targetId: userId } }),
+      this.prisma.scoreRecord.findFirst({ where: { judgeId: userId } }),
+    ])
+
+    const reasons: string[] = []
+    if (examAnswers) reasons.push('该用户参加过考试')
+    if (scoreRecords) reasons.push('该用户有评分记录')
+    if (asJudge) reasons.push('该用户作为考官打过分')
+
+    return { canDelete: reasons.length === 0, reasons }
+  }
+
+  /**
+   * 彻底删除用户（物理删除）
+   */
+  async forceDelete(tenantId: string, id: string, callerRole: UserRole) {
+    const target = await this._findOrFail(tenantId, id)
+    if (ROLE_LEVEL[target.role] >= ROLE_LEVEL[callerRole]) {
+      throw new ForbiddenException('无权删除同级或更高级别用户')
+    }
+
+    const check = await this.checkCanDelete(id)
+    if (!check.canDelete) {
+      throw new BadRequestException(`无法彻底删除：${check.reasons.join('，')}`)
+    }
+
+    return this.prisma.user.delete({ where: { id } })
   }
 }

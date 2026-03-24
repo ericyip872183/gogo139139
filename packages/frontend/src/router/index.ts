@@ -99,6 +99,13 @@ const router = createRouter({
           component: () => import('@/views/hardware/HardwareDebugPanel.vue'),
           meta: { title: '硬件调试', roles: ['SUPER_ADMIN'] },
         },
+        // AI 大模型配置（仅超管和机构管理员）
+        {
+          path: 'ai-settings',
+          name: 'AiSettings',
+          component: () => import('@/views/ai/AiSettingsView.vue'),
+          meta: { title: 'AI 大模型配置', roles: ['SUPER_ADMIN', 'TENANT_ADMIN'] },
+        },
         // 学生端 - 我的考试
         {
           path: 'my-exams',

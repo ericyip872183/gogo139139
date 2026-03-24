@@ -1,8 +1,10 @@
 import {
   Controller, Get, Post, Patch, Delete,
-  Body, Param, Query, UseGuards,
+  Body, Param, Query, UseGuards, Res, UseInterceptors, UploadedFile,
 } from '@nestjs/common'
 import { AuthGuard } from '@nestjs/passport'
+import { FileInterceptor } from '@nestjs/platform-express'
+import { Response } from 'express'
 import { QuestionsService } from './questions.service'
 import {
   CreateCategoryDto, UpdateCategoryDto,
@@ -91,6 +93,31 @@ export class QuestionsController {
     @Body() body: { rows: ImportQuestionDto[] },
   ) {
     return this.service.batchImport(user.tenantId, body.rows)
+  }
+
+  @Post('import-excel')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  @UseInterceptors(FileInterceptor('file'))
+  importExcel(
+    @CurrentUser() user: { tenantId: string },
+    @UploadedFile() file: Express.Multer.File,
+    @Query('categoryId') categoryId?: string,
+  ) {
+    return this.service.importExcel(user.tenantId, file.buffer, categoryId)
+  }
+
+  @Get('export')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'SCHOOL', 'CLASS', 'SUPER_ADMIN')
+  async exportExcel(
+    @CurrentUser() user: { tenantId: string },
+    @Query() query: QueryQuestionDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="题目导出.xlsx"',
+    })
+    return this.service.exportExcel(user.tenantId, query)
   }
 
   @Patch(':id')

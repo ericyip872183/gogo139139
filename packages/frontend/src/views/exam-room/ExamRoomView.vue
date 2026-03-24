@@ -1,5 +1,26 @@
 <template>
   <div class="exam-room" v-if="examData">
+    <!-- 离线提示条 -->
+    <el-alert
+      v-if="!isOnline"
+      title="网络已断开"
+      description="您的答案将保存在本地，网络恢复后自动同步。请放心继续答题。"
+      type="warning"
+      :closable="false"
+      show-icon
+      style="position:sticky;top:0;z-index:101"
+    />
+    <!-- 待同步提示 -->
+    <el-alert
+      v-else-if="Object.keys(pendingAnswers).length > 0"
+      title="正在同步答案…"
+      :description="`还有 ${Object.keys(pendingAnswers).length} 道题待同步`"
+      type="info"
+      :closable="false"
+      show-icon
+      style="position:sticky;top:0;z-index:101"
+    />
+
     <!-- 顶部固定栏 -->
     <div class="exam-header">
       <div class="exam-title">{{ examData.title }}</div>
@@ -138,11 +159,28 @@ const forceSubmitMsg = ref('')
 // 计时器
 const timeLeft = ref(0)
 let timer: ReturnType<typeof setInterval> | null = null
+let examEndTime: number | null = null
+
+// 断网续答相关
+const isOnline = ref(true)
+const pendingAnswers = reactive<Record<string, string>>({})  // 待同步的答案
+let syncTimer: ReturnType<typeof setInterval> | null = null
 
 function formatTime(s: number) {
   const m = Math.floor(s / 60)
   const sec = s % 60
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
+// 超时自动交卷
+function checkExamTimeout() {
+  if (!examEndTime) return
+  const now = Date.now()
+  if (now >= examEndTime) {
+    // 时间到，自动交卷
+    ElMessage.warning('考试时间已到，系统自动交卷')
+    doSubmit()
+  }
 }
 
 const answeredCount = computed(() =>
@@ -152,18 +190,62 @@ const answeredCount = computed(() =>
   }).length ?? 0
 )
 
-// 答题变更 - 实时保存
+// 答题变更 - 实时保存（断网时本地缓存）
 async function onAnswerChange(questionId: string) {
-  try {
-    await examRoomApi.saveAnswer(examId, { questionId, answer: answers[questionId] })
-  } catch { /* 网络故障时本地保留，不影响答题 */ }
+  const answer = answers[questionId]
+  // 先保存到本地
+  saveAnswerToLocal(questionId, answer)
+
+  if (isOnline.value) {
+    // 在线时尝试同步
+    try {
+      await examRoomApi.saveAnswer(examId, { questionId, answer })
+      // 同步成功后清除本地缓存
+      delete pendingAnswers[questionId]
+    } catch {
+      // 网络故障，标记为待同步
+      pendingAnswers[questionId] = answer
+      isOnline.value = false
+    }
+  } else {
+    // 离线时加入待同步队列
+    pendingAnswers[questionId] = answer
+  }
 }
 
 async function onMultiChange(questionId: string) {
   answers[questionId] = JSON.stringify(multiAnswers[questionId] ?? [])
+  onAnswerChange(questionId)
+}
+
+// 本地缓存答案
+function saveAnswerToLocal(questionId: string, answer: string) {
+  const cacheKey = `exam_${examId}_answers`
+  let cached: Record<string, string> = {}
   try {
-    await examRoomApi.saveAnswer(examId, { questionId, answer: answers[questionId] })
-  } catch { /* ignore */ }
+    const raw = localStorage.getItem(cacheKey)
+    if (raw) cached = JSON.parse(raw)
+  } catch {}
+  cached[questionId] = answer
+  localStorage.setItem(cacheKey, JSON.stringify(cached))
+}
+
+// 从本地缓存恢复答案
+function loadAnswersFromLocal() {
+  const cacheKey = `exam_${examId}_answers`
+  try {
+    const raw = localStorage.getItem(cacheKey)
+    if (raw) {
+      return JSON.parse(raw) as Record<string, string>
+    }
+  } catch {}
+  return {}
+}
+
+// 清除本地缓存
+function clearLocalCache() {
+  const cacheKey = `exam_${examId}_answers`
+  localStorage.removeItem(cacheKey)
 }
 
 function scrollTo(idx: number) {
@@ -195,7 +277,17 @@ async function confirmSubmit() {
 
 async function doSubmit() {
   if (timer) { clearInterval(timer); timer = null }
+  if (syncTimer) { clearInterval(syncTimer); syncTimer = null }
   forceSubmitVisible.value = false
+
+  // 交卷前尝试同步所有待答案
+  if (Object.keys(pendingAnswers).length > 0) {
+    await syncPendingAnswers()
+  }
+
+  // 清除本地缓存
+  clearLocalCache()
+
   try {
     await examRoomApi.submit(examId)
     ElMessage.success('交卷成功，正在跳转成绩页…')
@@ -212,7 +304,7 @@ onMounted(async () => {
     examData.value = data
     switchCount.value = data.switchCount ?? 0
 
-    // 恢复已保存答案
+    // 恢复已保存答案（从后端）
     data.questions.forEach((q: any) => {
       if (q.savedAnswer) {
         if (q.type === 'MULTIPLE') {
@@ -224,6 +316,21 @@ onMounted(async () => {
       }
     })
 
+    // 恢复本地缓存的答案（断网续答）
+    const localAnswers = loadAnswersFromLocal()
+    Object.keys(localAnswers).forEach(qid => {
+      if (!answers[qid]) {
+        answers[qid] = localAnswers[qid]
+        if (data.questions.find((qq: any) => qq.id === qid)?.type === 'MULTIPLE') {
+          try { multiAnswers[qid] = JSON.parse(localAnswers[qid]) } catch {}
+        }
+      }
+      // 加入待同步队列
+      if (!answers[qid] || localAnswers[qid] !== answers[qid]) {
+        pendingAnswers[qid] = localAnswers[qid]
+      }
+    })
+
     // 启动倒计时：取 duration 和 endAt 剩余时间中的较小值
     let remaining = data.duration * 60
     if (data.endAt) {
@@ -231,14 +338,44 @@ onMounted(async () => {
       if (toEnd > 0 && toEnd < remaining) remaining = toEnd
     }
     timeLeft.value = remaining
-    timer = setInterval(() => {
-      timeLeft.value--
-      if (timeLeft.value <= 0) {
-        if (timer) clearInterval(timer)
-        forceSubmitMsg.value = '考试时间已到，系统自动交卷。'
-        forceSubmitVisible.value = true
+    examEndTime = data.endAt ? new Date(data.endAt).getTime() : null
+
+    if (timeLeft.value <= 0) {
+      // 已经超时，直接交卷
+      ElMessage.warning('考试已超时，正在自动交卷…')
+      doSubmit()
+    } else {
+      timer = setInterval(() => {
+        timeLeft.value--
+        if (timeLeft.value <= 0) {
+          if (timer) clearInterval(timer)
+          ElMessage.warning('考试时间已到，系统自动交卷')
+          doSubmit()
+        }
+      }, 1000)
+    }
+
+    // 网络状态监听
+    const updateOnlineStatus = () => {
+      const wasOffline = !isOnline.value
+      isOnline.value = navigator.onLine
+      if (wasOffline && isOnline.value) {
+        ElMessage.success('网络已恢复，正在同步答案…')
+        syncPendingAnswers()
+      } else if (!isOnline.value) {
+        ElMessage.warning('网络已断开，答案将保存在本地')
       }
-    }, 1000)
+    }
+    updateOnlineStatus()
+    window.addEventListener('online', updateOnlineStatus)
+    window.addEventListener('offline', updateOnlineStatus)
+
+    // 定时同步待答案（每 5 秒）
+    syncTimer = setInterval(() => {
+      if (isOnline.value && Object.keys(pendingAnswers).length > 0) {
+        syncPendingAnswers()
+      }
+    }, 5000)
 
     // 注册切屏监听
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -252,10 +389,38 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
+  if (syncTimer) clearInterval(syncTimer)
+  window.removeEventListener('online', updateOnlineStatus)
+  window.removeEventListener('offline', updateOnlineStatus)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 
-const typeLabel = (t: string) => ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL: '填空' }[t] ?? t)
+// 同步待答案
+async function syncPendingAnswers() {
+  const toSync = { ...pendingAnswers }
+  for (const questionId of Object.keys(toSync)) {
+    try {
+      await examRoomApi.saveAnswer(examId, { questionId, answer: toSync[questionId] })
+      delete pendingAnswers[questionId]
+      // 清除本地缓存
+      const cacheKey = `exam_${examId}_answers`
+      let cached: Record<string, string> = {}
+      try { cached = JSON.parse(localStorage.getItem(cacheKey) || '{}') } catch {}
+      delete cached[questionId]
+      localStorage.setItem(cacheKey, JSON.stringify(cached))
+    } catch (e: any) {
+      // 同步失败，保留在待同步队列
+      console.warn('同步答案失败:', questionId, e)
+    }
+  }
+  if (Object.keys(pendingAnswers).length === 0) {
+    isOnline.value = true
+  }
+}
+
+function updateOnlineStatus() {
+  isOnline.value = navigator.onLine
+}
 const typeTagType = (t: string) => ({ SINGLE: '', MULTIPLE: 'warning', JUDGE: 'success', FILL: 'info' }[t] as any ?? '')
 </script>
 

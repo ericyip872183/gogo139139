@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common'
+import { Injectable, NotFoundException, ForbiddenException, StreamableFile } from '@nestjs/common'
+import * as ExcelJS from 'exceljs'
 import { PrismaService } from '../../prisma/prisma.service'
 import { QueryScoreDto } from './dto/score.dto'
 
@@ -113,5 +114,79 @@ export class ScoresService {
       score: a.score,
       explanation: a.question.explanation,
     }))
+  }
+
+  // Excel 导出
+  async exportExcel(tenantId: string, examId: string): Promise<StreamableFile> {
+    const result = await this.findByExam(tenantId, examId)
+    const exam = await this.prisma.exam.findUnique({
+      where: { id: examId },
+      include: { paper: { select: { totalScore: true, title: true } } },
+    })
+    if (!exam) throw new NotFoundException('考试不存在')
+
+    const workbook = new ExcelJS.Workbook()
+    const sheet = workbook.addWorksheet('成绩列表')
+    sheet.columns = [
+      { header: '姓名', key: 'realName', width: 15 },
+      { header: '学号', key: 'studentNo', width: 15 },
+      { header: '总分', key: 'totalScore', width: 10 },
+      { header: '满分', key: 'maxScore', width: 10 },
+      { header: '正确率', key: 'correctRate', width: 10 },
+      { header: '排名', key: 'rank', width: 8 },
+      { header: '交卷时间', key: 'createdAt', width: 20 },
+    ]
+
+    for (const s of result.list as any[]) {
+      sheet.addRow({
+        realName: s.realName,
+        studentNo: s.studentNo ?? '',
+        totalScore: s.totalScore,
+        maxScore: s.maxScore,
+        correctRate: s.correctRate + '%',
+        rank: s.rank ?? '',
+        createdAt: s.createdAt ? new Date(s.createdAt).toLocaleString('zh-CN') : '',
+      })
+    }
+
+    // 添加统计信息
+    const stats = await this.getExamStats(tenantId, examId)
+    const statsSheet = workbook.addWorksheet('统计')
+    statsSheet.addRow(['考试标题', exam.paper?.title ?? ''])
+    statsSheet.addRow(['满分', exam.paper?.totalScore ?? 0])
+    statsSheet.addRow(['参考人数', stats.count])
+    statsSheet.addRow(['平均分', stats.avg])
+    statsSheet.addRow(['最高分', stats.max])
+    statsSheet.addRow(['最低分', stats.min])
+    statsSheet.addRow(['及格率', stats.passRate + '%'])
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    return new StreamableFile(new Uint8Array(buffer as any), {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="成绩-${examId}.xlsx"`,
+    })
+  }
+
+  // 教师端：手动修改分数
+  async updateScore(tenantId: string, id: string, totalScore: number, comment?: string) {
+    const score = await this.prisma.score.findFirst({
+      where: { id },
+      include: { exam: { select: { tenantId: true } } },
+    })
+    if (!score) throw new NotFoundException('成绩记录不存在')
+    if (score.exam.tenantId !== tenantId) throw new ForbiddenException('无权修改此成绩')
+
+    // 计算新的正确率
+    const maxScore = score.maxScore
+    const correctRate = maxScore > 0 ? totalScore / maxScore : 0
+
+    return this.prisma.score.update({
+      where: { id },
+      data: {
+        totalScore,
+        correctRate,
+        comment: comment ?? null,
+      },
+    })
   }
 }

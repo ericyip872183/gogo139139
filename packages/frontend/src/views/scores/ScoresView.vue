@@ -26,6 +26,7 @@
         <template #header>
           <div class="header">
             <span>{{ examScores.exam.title }} — 成绩列表（满分 {{ examScores.exam.totalScore }} 分）</span>
+            <el-button type="primary" size="small" :icon="Download" @click="handleExport">导出 Excel</el-button>
           </div>
         </template>
         <el-table :data="examScores.list" border stripe>
@@ -45,10 +46,13 @@
           <el-table-column label="交卷时间" min-width="150">
             <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="100" fixed="right">
+          <el-table-column label="操作" width="150" fixed="right">
             <template #default="{ row }">
               <el-button link type="primary" size="small" @click="openDetail(row.userId, row.realName)">
                 答题明细
+              </el-button>
+              <el-button link type="warning" size="small" @click="openEditScore(row)">
+                修改分数
               </el-button>
             </template>
           </el-table-column>
@@ -59,7 +63,12 @@
     <!-- 学生端：我的成绩 -->
     <template v-else>
       <el-card>
-        <template #header><span class="title">我的成绩</span></template>
+        <template #header>
+          <div class="student-header">
+            <span class="title">我的成绩</span>
+            <el-checkbox v-model="wrongOnly" label="只看错题" @change="loadMyScores" />
+          </div>
+        </template>
         <el-table v-loading="loading" :data="myScores" stripe>
           <el-table-column label="考试名称" prop="examTitle" min-width="200" show-overflow-tooltip />
           <el-table-column label="得分" width="90" align="center">
@@ -90,6 +99,9 @@
     <!-- 答题明细抽屉 -->
     <el-drawer v-model="detailVisible" :title="`答题明细 — ${detailUser}`" size="680px">
       <div v-loading="detailLoading" class="detail-list">
+        <div v-if="wrongOnly && detailList.length === 0" class="empty-tip">
+          <el-empty description="太棒了！没有错题" />
+        </div>
         <div v-for="(a, idx) in detailList" :key="a.questionId" class="detail-item">
           <div class="d-header">
             <span class="d-num">{{ idx + 1 }}</span>
@@ -109,6 +121,28 @@
         </div>
       </div>
     </el-drawer>
+
+    <!-- 修改分数弹窗 -->
+    <el-dialog v-model="editScoreVisible" title="修改分数" width="400px">
+      <el-form :model="editScoreForm" label-width="80px">
+        <el-form-item label="学生姓名">
+          <span>{{ currentStudentName }}</span>
+        </el-form-item>
+        <el-form-item label="原始分数">
+          <span>{{ originalScore }} / {{ maxScore }}</span>
+        </el-form-item>
+        <el-form-item label="修改后分数" required>
+          <el-input-number v-model="editScoreForm.totalScore" :min="0" :max="maxScore" :step="0.5" style="width:100%" />
+        </el-form-item>
+        <el-form-item label="评语">
+          <el-input v-model="editScoreForm.comment" placeholder="可选，填写修改原因" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editScoreVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="handleEditScoreSubmit">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -116,6 +150,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Download } from '@element-plus/icons-vue'
 import { scoresApi } from '@/api/scores'
 import { examsApi } from '@/api/exams'
 import { useAuthStore } from '@/stores/auth'
@@ -131,6 +166,9 @@ const examScores = ref<any>(null)
 const stats = ref<any>(null)
 const myScores = ref<any[]>([])
 
+// 错题回顾（学生端）
+const wrongOnly = ref(false)
+
 // 答题明细
 const detailVisible = ref(false)
 const detailLoading = ref(false)
@@ -139,9 +177,26 @@ const detailUser = ref('')
 const detailExamId = ref('')
 const detailUserId = ref('')
 
+// 修改分数
+const editScoreVisible = ref(false)
+const submitting = ref(false)
+const currentScoreId = ref('')
+const currentStudentName = ref('')
+const originalScore = ref(0)
+const maxScore = ref(0)
+const editScoreForm = ref({ totalScore: 0, comment: '' })
+
 function formatDate(d: string) {
   if (!d) return '—'
   return new Date(d).toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-')
+}
+
+function handleExport() {
+  if (!selectedExamId.value) return
+  const a = document.createElement('a')
+  a.href = `${import.meta.env.VITE_API_BASE_URL || '/api'}/scores/exam/${selectedExamId.value}/export`
+  a.download = `成绩-${selectedExamId.value}.xlsx`
+  a.click()
 }
 
 function formatAnswer(a: string) {
@@ -189,8 +244,35 @@ async function openMyDetail(row: any) {
   detailLoading.value = true
   try {
     detailList.value = (await scoresApi.getMyDetail(row.examId, auth.user!.id)) as any[]
+    // 只看错题
+    if (wrongOnly.value) {
+      detailList.value = detailList.value.filter(a => !a.isCorrect)
+    }
   } finally {
     detailLoading.value = false
+  }
+}
+
+function openEditScore(row: any) {
+  currentScoreId.value = row.userId
+  currentStudentName.value = row.realName
+  originalScore.value = row.totalScore
+  maxScore.value = row.maxScore
+  editScoreForm.value = { totalScore: row.totalScore, comment: '' }
+  editScoreVisible.value = true
+}
+
+async function handleEditScoreSubmit() {
+  submitting.value = true
+  try {
+    await scoresApi.updateScore(currentScoreId.value, editScoreForm.value.totalScore, editScoreForm.value.comment || undefined)
+    ElMessage.success('分数修改成功')
+    editScoreVisible.value = false
+    await loadExamScores()
+  } catch (e: any) {
+    ElMessage.error(e.message || '修改失败')
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -223,11 +305,13 @@ onMounted(async () => {
 .filter-card { }
 .filter-row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
 .header { display: flex; align-items: center; justify-content: space-between; }
+.student-header { display: flex; align-items: center; justify-content: space-between; }
 .title { font-size: 16px; font-weight: 600; }
 .pass { color: #67c23a; font-weight: 600; }
 .fail { color: #f56c6c; font-weight: 600; }
 .detail-list { display: flex; flex-direction: column; gap: 20px; padding: 0 4px; }
 .detail-item { border: 1px solid #e4e7ed; border-radius: 6px; padding: 16px; }
+.empty-tip { padding: 40px 0; }
 .d-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .d-num {
   width: 24px; height: 24px; border-radius: 50%; background: #409eff; color: #fff;
@@ -239,5 +323,7 @@ onMounted(async () => {
 .label { color: #909399; }
 .ans-right { color: #67c23a; font-weight: 600; }
 .ans-wrong { color: #f56c6c; font-weight: 600; }
+.ans-wrong-bold { color: #f56c6c; font-weight: 700; }
 .d-explanation { font-size: 13px; color: #606266; background: #f5f7fa; padding: 8px 10px; border-radius: 4px; }
+.wrong-only-tip { font-size: 12px; color: #f56c6c; margin-left: 8px; }
 </style>

@@ -67,4 +67,12 @@ export const questionsApi = {
   remove: (id: string) => request.delete(`/questions/${id}`),
   batchRemove: (ids: string[]) => request.delete('/questions/batch', { data: { ids } }),
   batchImport: (rows: any[]) => request.post('/questions/import', { rows }),
+
+  // Excel 导入导出
+  importExcel: (formData: FormData) =>
+    request.post('/questions/import-excel', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  exportExcel: (query?: QuestionQuery) =>
+    request.get('/questions/export', { params: query, responseType: 'blob' }),
 }

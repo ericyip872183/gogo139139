@@ -1,9 +1,9 @@
 <template>
-  <el-container class="main-layout">
+  <div class="app-layout">
     <!-- 顶部导航栏 -->
-    <el-header class="main-header">
+    <header class="app-header">
       <div class="header-left">
-        <span class="logo">若容虚拟数据平台</span>
+        <span class="logo">盼蕾中医/医学教学平台</span>
         <el-menu
           mode="horizontal"
           :ellipsis="false"
@@ -12,21 +12,38 @@
           class="main-nav"
         >
           <el-menu-item index="/dashboard">首页</el-menu-item>
-          <el-menu-item v-if="isTeacherOrAdmin" index="/organizations">组织架构</el-menu-item>
-          <el-menu-item v-if="isTeacherOrAdmin" index="/users">用户管理</el-menu-item>
-          <el-menu-item v-if="isTeacherOrAdmin" index="/questions">题库管理</el-menu-item>
-          <el-menu-item v-if="isTeacherOrAdmin" index="/papers">试卷管理</el-menu-item>
-          <el-menu-item v-if="isTeacherOrAdmin" index="/exams">考试管理</el-menu-item>
-          <el-menu-item index="/my-exams">我的考试</el-menu-item>
-          <el-menu-item index="/scores">成绩查询</el-menu-item>
-          <el-menu-item v-if="isTeacherOrAdmin" index="/score-tables">评分表</el-menu-item>
-          <el-menu-item v-if="isSuperAdmin" index="/admin">超管后台</el-menu-item>
-          <el-menu-item v-if="isSuperAdmin" index="/hardware">硬件调试</el-menu-item>
+          <!-- 机构管理员：显示全部管理菜单 -->
+          <template v-if="isTenantAdmin">
+            <el-menu-item index="/organizations">组织架构</el-menu-item>
+            <el-menu-item index="/users">用户管理</el-menu-item>
+            <el-menu-item index="/questions">题库管理</el-menu-item>
+            <el-menu-item index="/papers">试卷管理</el-menu-item>
+            <el-menu-item index="/exams">考试管理</el-menu-item>
+            <el-menu-item index="/score-tables">评分表</el-menu-item>
+            <el-menu-item index="/ai-settings">AI 大模型</el-menu-item>
+          </template>
+          <!-- 教师：显示教学相关菜单 -->
+          <template v-else-if="isTeacher">
+            <el-menu-item index="/questions">题库管理</el-menu-item>
+            <el-menu-item index="/papers">试卷管理</el-menu-item>
+            <el-menu-item index="/exams">考试管理</el-menu-item>
+            <el-menu-item index="/scores">成绩查询</el-menu-item>
+            <el-menu-item index="/score-tables">评分表</el-menu-item>
+          </template>
+          <!-- 学生：只显示学习和成绩 -->
+          <template v-else-if="isStudent">
+            <el-menu-item index="/my-exams">我的考试</el-menu-item>
+            <el-menu-item index="/scores">成绩查询</el-menu-item>
+          </template>
+          <!-- 超级管理员：只显示超管后台 -->
+          <template v-else-if="isSuperAdmin">
+            <el-menu-item index="/admin">超管后台</el-menu-item>
+          </template>
         </el-menu>
       </div>
 
       <div class="header-right">
-        <!-- 已购模块入口（Sprint 8 后动态渲染） -->
+        <!-- 已购模块入口 -->
         <el-dropdown
           v-if="purchasedModules.length > 0"
           class="module-switch"
@@ -65,13 +82,13 @@
           </template>
         </el-dropdown>
       </div>
-    </el-header>
+    </header>
 
     <!-- 主内容区 -->
-    <el-main class="main-content">
+    <main class="app-main">
       <router-view />
-    </el-main>
-  </el-container>
+    </main>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -85,8 +102,10 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const user = computed(() => auth.user)
-const isTeacherOrAdmin = computed(() => auth.isTeacher)
-const isSuperAdmin = computed(() => auth.isSuperAdmin)
+const isSuperAdmin = computed(() => auth.user?.role === 'SUPER_ADMIN')
+const isTenantAdmin = computed(() => auth.user?.role === 'TENANT_ADMIN')
+const isTeacher = computed(() => ['TEACHER', 'SCHOOL', 'CLASS'].includes(auth.user?.role || ''))
+const isStudent = computed(() => auth.user?.role === 'STUDENT')
 const activeMenu = computed(() => '/' + route.path.split('/')[1])
 const purchasedModules = computed(() => auth.modules)
 
@@ -109,15 +128,25 @@ function handleUserCommand(command: string) {
 </script>
 
 <style scoped>
-.main-layout { height: 100vh; }
-.main-header {
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid #e4e7ed;
   padding: 0 20px;
   background: #fff;
+  flex-shrink: 0;
+  height: 60px;
+  z-index: 100;
 }
+
 .header-left { display: flex; align-items: center; gap: 20px; }
 .logo { font-size: 18px; font-weight: 600; color: #409eff; white-space: nowrap; }
 .main-nav { border-bottom: none; }
@@ -125,5 +154,11 @@ function handleUserCommand(command: string) {
 .module-switch { cursor: pointer; }
 .user-info { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .user-name { font-size: 14px; color: #303133; }
-.main-content { background: #f5f7fa; overflow: hidden; display: flex; flex-direction: column; }
+
+.app-main {
+  flex: 1;
+  overflow-y: auto;
+  background: #f5f7fa;
+  padding: 20px;
+}
 </style>

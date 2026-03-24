@@ -157,6 +157,10 @@ export class ImportQuestionDto {
   @IsOptional()
   categoryName?: string
 
+  @IsString()
+  @IsOptional()
+  categoryId?: string
+
   @IsEnum(Difficulty)
   @IsOptional()
   difficulty?: Difficulty

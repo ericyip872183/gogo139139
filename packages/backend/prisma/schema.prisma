@@ -299,6 +299,7 @@ model Score {
   maxScore    Float    @default(0)
   correctRate Float    @default(0)  // 正确率 0-1
   rank        Int?
+  comment     String?  @db.Text     // 教师手动评分备注
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -398,4 +399,58 @@ model TenantModule {
 
   @@unique([tenantId, moduleId])
   @@map("tenant_modules")
+}
+
+// ─── AI 模块（豆包大模型）────────────────────────────────
+
+model AiUsage {
+  id          String   @id @default(cuid())
+  tenantId    String
+  userId      String
+  module      String   @db.VarChar(50)
+  tokensUsed  Int      @default(0)
+  cost        Float    @default(0)
+  request     String   @db.Text
+  response    String?  @db.Text
+  duration    Int      @default(0)
+  status      String   @default("success") @db.VarChar(20)
+  errorMessage String? @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([module])
+  @@map("ai_usage")
+}
+
+model AiRecharge {
+  id          String   @id @default(cuid())
+  tenantId    String
+  amount      Float
+  tokens      Int
+  status      String   @default("pending") @db.VarChar(20)
+  orderNo     String   @unique @db.VarChar(50)
+  payUrl      String?  @db.VarChar(500)
+  paidAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([orderNo])
+  @@map("ai_recharge")
+}
+
+model AiConfig {
+  id          String   @id @default(cuid())
+  tenantId    String   @unique
+  apiKey      String   @db.VarChar(200)
+  apiSecret   String?  @db.VarChar(200)
+  endpoint    String   @db.VarChar(200)
+  model       String   @default("doubao-lite-4k") @db.VarChar(50)
+  maxTokens   Int      @default(2000)
+  isEnabled   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("ai_config")
 }

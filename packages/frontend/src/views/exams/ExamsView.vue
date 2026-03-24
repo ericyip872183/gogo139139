@@ -46,6 +46,7 @@
               link type="warning" size="small"
               @click="handleCancel(row)"
             >取消</el-button>
+            <el-button link type="info" size="small" @click="handleClone(row)">克隆</el-button>
             <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
           </template>
         </el-table-column>
@@ -205,6 +206,13 @@ async function handleCancel(row: Exam) {
   await ElMessageBox.confirm(`确定取消考试「${row.title}」吗？`, '确认取消', { type: 'warning' })
   await examsApi.cancel(row.id)
   ElMessage.success('已取消')
+  load()
+}
+
+async function handleClone(row: Exam) {
+  await ElMessageBox.confirm(`确定克隆考试「${row.title}」吗？`, '确认克隆', { type: 'warning' })
+  const newExam = await examsApi.clone(row.id) as any
+  ElMessage.success(`克隆成功：${newExam.title}`)
   load()
 }
 

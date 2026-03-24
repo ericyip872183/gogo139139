@@ -10,4 +10,14 @@ export const scoreTablesApi = {
   createRecord: (data: any) => request.post('/score-tables/records', data),
   getRecords: (tableId: string) => request.get(`/score-tables/${tableId}/records`),
   syncRecords: (records: any[]) => request.post('/score-tables/records/sync', { records }),
+  // 转换为考题
+  convertToQuestions: (id: string) => request.post(`/score-tables/${id}/convert-to-questions`),
+  // 导出记录
+  exportRecords: (tableId: string) =>
+    request.get(`/score-tables/${tableId}/records/export`, { responseType: 'blob' }),
+  // Excel 导入
+  importExcel: (formData: FormData) =>
+    request.post('/score-tables/import-excel', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 }
