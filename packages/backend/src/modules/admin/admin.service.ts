@@ -1,7 +1,12 @@
-import { Injectable, NotFoundException, ConflictException, OnModuleInit } from '@nestjs/common'
+import { Injectable, NotFoundException, ConflictException, OnModuleInit, BadRequestException } from '@nestjs/common'
 import * as bcrypt from 'bcrypt'
 import { PrismaService } from '../../prisma/prisma.service'
-import { CreateTenantDto, UpdateTenantDto, CreateModuleDto, GrantModuleDto, CreateTenantAdminDto } from './dto/admin.dto'
+import {
+  CreateTenantDto, UpdateTenantDto, CreateModuleDto, GrantModuleDto,
+  CreateTenantAdminDto, CreateTenantUserDto, UpdateTenantUserDto,
+  UpdateUserPasswordDto, BatchDeleteDto, UpdateUserDto, CreateOperationLogDto
+} from './dto/admin.dto'
+import { UserRole } from './dto/admin.dto'
 
 // 系统预置的8个专业模块（不可删除，超管只能授权/撤销）
 const PRESET_MODULES = [
@@ -240,5 +245,335 @@ export class AdminService implements OnModuleInit {
         createdAt: item.createdAt,
       })),
     }
+  }
+
+  // ── 机构成员管理 ──────────────────────────────────────
+
+  /**
+   * 获取机构成员列表
+   */
+  async listTenantUsers(tenantId: string, page: number = 1, pageSize: number = 20, keyword?: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
+    if (!tenant) throw new NotFoundException('机构不存在')
+
+    const where: any = { tenantId }
+    if (keyword) {
+      where.OR = [
+        { username: { contains: keyword } },
+        { realName: { contains: keyword } },
+        { phone: { contains: keyword } },
+        { email: { contains: keyword } },
+      ]
+    }
+
+    const [total, list] = await Promise.all([
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ])
+
+    return { total, list, page, pageSize }
+  }
+
+  /**
+   * 新增机构成员
+   */
+  async createTenantUser(tenantId: string, dto: CreateTenantUserDto, adminId: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
+    if (!tenant) throw new NotFoundException('机构不存在')
+
+    const exists = await this.prisma.user.findFirst({
+      where: { username: dto.username, tenantId },
+    })
+    if (exists) throw new ConflictException('该机构下用户名已存在')
+
+    const hash = await bcrypt.hash(dto.password, 10)
+    const user = await this.prisma.user.create({
+      data: {
+        username: dto.username,
+        realName: dto.realName,
+        password: hash,
+        role: dto.role,
+        tenantId,
+        phone: dto.phone,
+        email: dto.email,
+        studentNo: dto.studentNo,
+      },
+    })
+
+    // 记录操作日志
+    await this.logOperation(adminId, 'CREATE_USER', 'USER', user.id, user.realName)
+
+    return user
+  }
+
+  /**
+   * 编辑机构成员
+   */
+  async updateTenantUser(tenantId: string, userId: string, dto: UpdateTenantUserDto, adminId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, tenantId },
+    })
+    if (!user) throw new NotFoundException('用户不存在')
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: dto,
+    })
+
+    // 记录操作日志
+    await this.logOperation(adminId, 'UPDATE_USER', 'USER', userId, dto.realName || user.realName)
+
+    return updated
+  }
+
+  /**
+   * 删除机构成员
+   */
+  async deleteTenantUser(tenantId: string, userId: string, adminId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, tenantId },
+    })
+    if (!user) throw new NotFoundException('用户不存在')
+
+    await this.prisma.user.delete({ where: { id: userId } })
+
+    // 记录操作日志
+    await this.logOperation(adminId, 'DELETE_USER', 'USER', userId, user.realName)
+
+    return { message: '删除成功' }
+  }
+
+  /**
+   * 批量删除机构成员
+   */
+  async batchDeleteTenantUsers(tenantId: string, userIds: string[], adminId: string) {
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds }, tenantId },
+    })
+
+    if (users.length !== userIds.length) {
+      throw new NotFoundException('部分用户不存在')
+    }
+
+    await this.prisma.user.deleteMany({
+      where: { id: { in: userIds }, tenantId },
+    })
+
+    // 记录操作日志
+    for (const user of users) {
+      await this.logOperation(adminId, 'DELETE_USER', 'USER', user.id, user.realName)
+    }
+
+    return { message: `已删除 ${users.length} 个用户` }
+  }
+
+  /**
+   * 修改成员角色
+   */
+  async updateTenantUserRole(tenantId: string, userId: string, role: UserRole, adminId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, tenantId },
+    })
+    if (!user) throw new NotFoundException('用户不存在')
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: { role },
+    })
+
+    // 记录操作日志
+    await this.logOperation(adminId, 'UPDATE_USER_ROLE', 'USER', userId, user.realName)
+
+    return updated
+  }
+
+  /**
+   * 重置用户密码
+   */
+  async resetTenantUserPassword(tenantId: string, userId: string, newPassword: string, adminId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, tenantId },
+    })
+    if (!user) throw new NotFoundException('用户不存在')
+
+    const hash = await bcrypt.hash(newPassword, 10)
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hash },
+    })
+
+    // 记录操作日志
+    await this.logOperation(adminId, 'RESET_PASSWORD', 'USER', userId, user.realName)
+
+    return { message: '密码已重置' }
+  }
+
+  // ── 全库用户管理 ──────────────────────────────────────
+
+  /**
+   * 获取全库用户列表（分页 + 筛选）
+   */
+  async listAllUsers(page: number = 1, pageSize: number = 20, keyword?: string, tenantId?: string, role?: string) {
+    const where: any = {}
+
+    if (keyword) {
+      where.OR = [
+        { username: { contains: keyword } },
+        { realName: { contains: keyword } },
+        { phone: { contains: keyword } },
+        { email: { contains: keyword } },
+      ]
+    }
+    if (tenantId) where.tenantId = tenantId
+    if (role) where.role = role
+
+    const [total, list] = await Promise.all([
+      this.prisma.user.count({ where }),
+      this.prisma.user.findMany({
+        where,
+        include: { tenant: { select: { name: true, code: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ])
+
+    return { total, list, page, pageSize }
+  }
+
+  /**
+   * 获取用户详情（含所属机构列表）
+   */
+  async getUserDetail(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        tenant: { select: { name: true, code: true } },
+        userOrgs: { include: { organization: true } },
+      },
+    })
+    if (!user) throw new NotFoundException('用户不存在')
+
+    return user
+  }
+
+  /**
+   * 超管编辑用户
+   */
+  async updateUser(userId: string, dto: UpdateUserDto, adminId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } })
+    if (!user) throw new NotFoundException('用户不存在')
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: dto,
+    })
+
+    // 记录操作日志
+    await this.logOperation(adminId, 'UPDATE_USER', 'USER', userId, dto.realName || user.realName)
+
+    return updated
+  }
+
+  /**
+   * 按手机/邮箱搜索用户（跨机构）
+   */
+  async searchUserByContact(contact: string) {
+    const users = await this.prisma.user.findMany({
+      where: {
+        OR: [
+          { phone: { contains: contact } },
+          { email: { contains: contact } },
+        ],
+      },
+      include: {
+        tenant: { select: { name: true, code: true } },
+      },
+    })
+
+    return users
+  }
+
+  /**
+   * 删除用户（全库）
+   */
+  async deleteUser(userId: string, adminId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } })
+    if (!user) throw new NotFoundException('用户不存在')
+
+    await this.prisma.user.delete({ where: { id: userId } })
+
+    // 记录操作日志
+    await this.logOperation(adminId, 'DELETE_USER', 'USER', userId, user.realName)
+
+    return { message: '删除成功' }
+  }
+
+  // ── 组织架构 ──────────────────────────────────────
+
+  /**
+   * 获取机构组织架构树
+   */
+  async getTenantOrganizations(tenantId: string) {
+    const orgs = await this.prisma.organization.findMany({
+      where: { tenantId },
+      orderBy: { sortOrder: 'asc' },
+    })
+
+    // 构建树形结构
+    const orgMap = new Map(orgs.map(org => [org.id, { ...org, children: [] as any[] }]))
+    const roots: any[] = []
+
+    for (const org of orgMap.values()) {
+      if (org.parentId) {
+        const parent = orgMap.get(org.parentId)
+        if (parent) {
+          parent.children.push(org)
+        } else {
+          roots.push(org)
+        }
+      } else {
+        roots.push(org)
+      }
+    }
+
+    return roots
+  }
+
+  // ── 操作日志 ──────────────────────────────────────
+
+  /**
+   * 记录操作日志
+   */
+  private async logOperation(adminId: string, action: string, targetType: string, targetId: string, targetName?: string) {
+    await this.prisma.adminOperationLog.create({
+      data: { adminId, action, targetType, targetId, targetName },
+    })
+  }
+
+  /**
+   * 获取操作日志列表
+   */
+  async getOperationLogs(page: number = 1, pageSize: number = 20, adminId?: string, action?: string) {
+    const where: any = {}
+    if (adminId) where.adminId = adminId
+    if (action) where.action = action
+
+    const [total, list] = await Promise.all([
+      this.prisma.adminOperationLog.count({ where }),
+      this.prisma.adminOperationLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ])
+
+    return { total, list, page, pageSize }
   }
 }

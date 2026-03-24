@@ -100,7 +100,7 @@ export class QuestionsController {
   @UseInterceptors(FileInterceptor('file'))
   importExcel(
     @CurrentUser() user: { tenantId: string },
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile() file: any,
     @Query('categoryId') categoryId?: string,
   ) {
     return this.service.importExcel(user.tenantId, file.buffer, categoryId)

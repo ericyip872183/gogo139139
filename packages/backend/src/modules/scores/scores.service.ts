@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, StreamableFile } from '@nestjs/common'
-import * as ExcelJS from 'exceljs'
+import ExcelJS from 'exceljs'
 import { PrismaService } from '../../prisma/prisma.service'
 import { QueryScoreDto } from './dto/score.dto'
 

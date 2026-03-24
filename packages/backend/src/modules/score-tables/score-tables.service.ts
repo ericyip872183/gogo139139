@@ -266,7 +266,7 @@ export class ScoreTablesService {
 
     const results = { success: 0, failed: 0, errors: [] as string[] }
 
-    sheet.eachRow((row, rowNumber) => {
+    sheet.eachRow((row: any, rowNumber: number) => {
       if (rowNumber === 1) return // 跳过表头
 
       try {

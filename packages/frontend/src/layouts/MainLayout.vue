@@ -12,8 +12,8 @@
           class="main-nav"
         >
           <el-menu-item index="/dashboard">首页</el-menu-item>
-          <!-- 机构管理员：显示全部管理菜单 -->
-          <template v-if="isTenantAdmin">
+          <!-- 机构管理员/学校管理员：显示全部管理菜单 -->
+          <template v-if="isTenantAdmin || isSchoolAdmin">
             <el-menu-item index="/organizations">组织架构</el-menu-item>
             <el-menu-item index="/users">用户管理</el-menu-item>
             <el-menu-item index="/questions">题库管理</el-menu-item>
@@ -35,9 +35,11 @@
             <el-menu-item index="/my-exams">我的考试</el-menu-item>
             <el-menu-item index="/scores">成绩查询</el-menu-item>
           </template>
-          <!-- 超级管理员：只显示超管后台 -->
+          <!-- 超级管理员：显示超管后台 + 组织架构 + 用户管理 -->
           <template v-else-if="isSuperAdmin">
             <el-menu-item index="/admin">超管后台</el-menu-item>
+            <el-menu-item index="/organizations">组织架构</el-menu-item>
+            <el-menu-item index="/users">用户管理</el-menu-item>
           </template>
         </el-menu>
       </div>
@@ -104,6 +106,7 @@ const auth = useAuthStore()
 const user = computed(() => auth.user)
 const isSuperAdmin = computed(() => auth.user?.role === 'SUPER_ADMIN')
 const isTenantAdmin = computed(() => auth.user?.role === 'TENANT_ADMIN')
+const isSchoolAdmin = computed(() => auth.user?.role === 'SCHOOL')
 const isTeacher = computed(() => ['TEACHER', 'SCHOOL', 'CLASS'].includes(auth.user?.role || ''))
 const isStudent = computed(() => auth.user?.role === 'STUDENT')
 const activeMenu = computed(() => '/' + route.path.split('/')[1])

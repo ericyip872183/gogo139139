@@ -454,3 +454,21 @@ model AiConfig {
 
   @@map("ai_config")
 }
+
+// ─── 超管操作日志（Admin）─────────────────────────────
+
+model AdminOperationLog {
+  id         String   @id @default(cuid())
+  adminId    String   @db.VarChar(191)
+  action     String   @db.VarChar(50)     // CREATE_USER / UPDATE_USER / DELETE_USER / RESET_PASSWORD 等
+  targetType String   @db.VarChar(50)     // USER / TENANT / MODULE
+  targetId   String   @db.VarChar(191)
+  targetName String?  @db.VarChar(200)
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([adminId])
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("admin_operation_logs")
+}

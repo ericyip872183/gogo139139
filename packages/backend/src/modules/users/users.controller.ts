@@ -97,7 +97,7 @@ export class UsersController {
   @UseInterceptors(FileInterceptor('file'))
   importExcel(
     @CurrentUser() user: { tenantId: string },
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile() file: any,
   ) {
     return this.service.importExcel(user.tenantId, file.buffer)
   }

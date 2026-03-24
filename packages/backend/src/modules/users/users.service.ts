@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common'
 import * as bcrypt from 'bcrypt'
 import * as ExcelJS from 'exceljs'
+import type { Worksheet } from 'exceljs'
 import { PrismaService } from '../../prisma/prisma.service'
 import { CreateUserDto, UpdateUserDto, QueryUserDto, ImportUserDto } from './dto/user.dto'
 import { UserRole } from '@prisma/client'
@@ -333,7 +334,7 @@ export class UsersService {
     const rows: ImportUserDto[] = []
     const headerRow = sheet.getRow(1)
     const headers: string[] = []
-    headerRow.eachCell((cell) => { headers.push(String(cell.value ?? '').trim()) })
+    headerRow.eachCell((cell: any) => { headers.push(String(cell.value ?? '').trim()) })
 
     const colMap: Record<string, string> = {
       '用户名': 'username', '姓名': 'realName', '密码': 'password',
@@ -344,10 +345,10 @@ export class UsersService {
       '班级管理员': 'CLASS', '教师': 'TEACHER', '学生': 'STUDENT',
     }
 
-    sheet.eachRow((row, rowNumber) => {
+    sheet.eachRow((row: any, rowNumber: number) => {
       if (rowNumber === 1) return
       const item: any = {}
-      row.eachCell((cell, colNumber) => {
+      row.eachCell((cell: any, colNumber: number) => {
         const header = headers[colNumber - 1]
         const field = colMap[header]
         if (field) {

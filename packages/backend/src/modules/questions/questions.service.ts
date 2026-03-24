@@ -308,7 +308,7 @@ export class QuestionsService {
 
     const rows: ImportQuestionDto[] = []
 
-    sheet.eachRow((row, rowNumber) => {
+    sheet.eachRow((row: any, rowNumber: number) => {
       if (rowNumber === 1) return
       const typeRaw = String(row.getCell(1).value ?? '单选题').trim()
       const type = typeRaw.includes('单') ? QuestionType.SINGLE
