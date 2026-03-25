@@ -69,6 +69,13 @@
         <el-form-item label="状态">
           <el-switch v-model="formData.isEnabled" />
         </el-form-item>
+        <el-form-item label="图片生成">
+          <el-switch v-model="formData.supportImageGeneration" />
+          <div class="form-tip">启用后支持文生图功能</div>
+        </el-form-item>
+        <el-form-item v-if="formData.supportImageGeneration" label="图片端点">
+          <el-input v-model="formData.imageEndpoint" placeholder="留空则使用默认端点 /images/generations" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -97,6 +104,8 @@ const formData = reactive<Partial<AiProvider>>({
   authType: 'Bearer',
   apiKey: '',
   apiSecret: '',
+  supportImageGeneration: false,
+  imageEndpoint: '',
   isEnabled: true,
 })
 
@@ -143,6 +152,8 @@ const handleEdit = (row: AiProvider) => {
     authType: row.authType,
     apiKey: row.apiKey,
     apiSecret: row.apiSecret,
+    supportImageGeneration: row.supportImageGeneration,
+    imageEndpoint: row.imageEndpoint,
     isEnabled: row.isEnabled,
   })
   dialogVisible.value = true
@@ -175,6 +186,8 @@ const handleSubmit = async () => {
       authType: formData.authType,
       apiKey: formData.apiKey,
       apiSecret: formData.apiSecret || undefined,
+      supportImageGeneration: !!formData.supportImageGeneration,
+      imageEndpoint: formData.imageEndpoint || undefined,
       isEnabled: !!formData.isEnabled,
     }
     if (isEdit.value && formData.id) {
@@ -203,5 +216,10 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+.form-tip {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
 }
 </style>

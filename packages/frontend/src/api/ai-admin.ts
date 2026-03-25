@@ -10,6 +10,8 @@ export interface AiProvider {
   authType: string
   apiKey: string
   apiSecret?: string
+  supportImageGeneration?: boolean
+  imageEndpoint?: string
   isEnabled: boolean
   config?: any
   createdAt: string

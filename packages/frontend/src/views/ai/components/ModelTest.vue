@@ -113,6 +113,16 @@
               </el-col>
             </el-row>
           </el-form>
+          <div style="margin-top: 16px; text-align: right;">
+            <el-button
+              type="primary"
+              :loading="sending"
+              :disabled="!imageConfig.prompt.trim()"
+              @click="handleGenerateImage"
+            >
+              生成图片
+            </el-button>
+          </div>
         </el-card>
 
         <!-- 图片生成结果 -->
