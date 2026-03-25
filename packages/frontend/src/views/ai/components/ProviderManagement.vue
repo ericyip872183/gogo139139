@@ -107,6 +107,7 @@ const rules: FormRules = {
     { type: 'url', message: '请输入有效的 URL', trigger: 'blur' },
   ],
   apiKey: [{ required: true, message: '请输入 API Key', trigger: 'blur' }],
+  authType: [{ required: true, message: '请选择认证方式', trigger: 'change' }],
 }
 
 const loadProviders = async () => {

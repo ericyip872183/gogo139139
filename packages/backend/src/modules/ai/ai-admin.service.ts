@@ -47,8 +47,14 @@ export class AiAdminService {
    * 创建服务商
    */
   async createProvider(dto: CreateProviderDto) {
+    // 处理默认值
+    const data = {
+      ...dto,
+      authType: dto.authType || 'Bearer',
+      isEnabled: dto.isEnabled ?? true,
+    }
     return this.prisma.aiProvider.create({
-      data: dto,
+      data,
     })
   }
 

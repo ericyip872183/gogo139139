@@ -14,7 +14,7 @@ export class CreateProviderDto {
 
   @IsString()
   @IsOptional()
-  authType?: string = 'Bearer'
+  authType?: string
 
   @IsString()
   @IsNotEmpty()
@@ -23,6 +23,10 @@ export class CreateProviderDto {
   @IsString()
   @IsOptional()
   apiSecret?: string
+
+  @IsBoolean()
+  @IsOptional()
+  isEnabled?: boolean
 
   @IsObject()
   @IsOptional()
