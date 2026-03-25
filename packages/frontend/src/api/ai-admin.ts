@@ -317,6 +317,16 @@ export const aiAdminApi = {
   /**
    * 测试图片生成
    */
-  generateImage: (data: { providerId: string; prompt: string; size?: string; quality?: string; style?: string; n?: number }) =>
+  generateImage: (data: {
+    providerId: string;
+    prompt: string;
+    model?: string;  // 模型 ID
+    size?: string;  // 1024_1024, 2K, 4K, 1024_1792, 1792_1024
+    style?: string;  // natural, vivid, realistic, anime, artistic
+    n?: number;  // 1-4
+    seed?: number;  // 随机种子
+    negativePrompt?: string;  // 负向提示词
+    referenceImageUrl?: string;  // 参考图 URL
+  }) =>
     request.post<ImageGenerationResult>('/ai/admin/models/generate-image', data),
 }

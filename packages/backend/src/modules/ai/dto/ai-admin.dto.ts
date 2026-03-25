@@ -149,19 +149,27 @@ export class GenerateImageDto {
 
   @IsString()
   @IsOptional()
-  size?: string = '1024x1024'
+  size?: string = '1024_1024'  // 火山引擎格式：1024_1024, 2K, 4K, 1024_1792, 1792_1024
 
   @IsString()
   @IsOptional()
-  quality?: string = 'standard'
-
-  @IsString()
-  @IsOptional()
-  style?: string = 'natural'
+  style?: string = 'natural'  // 自然 | 生动 | 写实 | 动漫 | 艺术
 
   @IsNumber()
   @IsOptional()
-  n?: number = 1
+  n?: number = 1  // 生成数量（1-4）
+
+  @IsNumber()
+  @IsOptional()
+  seed?: number  // 随机种子（可选）
+
+  @IsString()
+  @IsOptional()
+  negativePrompt?: string  // 负向提示词
+
+  @IsString()
+  @IsOptional()
+  referenceImageUrl?: string  // 参考图 URL
 }
 
 /**

@@ -755,7 +755,12 @@ export class AiAdminService {
   /**
    * 测试图片生成
    */
-  async generateImage(dto: GenerateImageDto & { model?: string }) {
+  async generateImage(dto: GenerateImageDto & {
+    model?: string;
+    seed?: number;
+    negativePrompt?: string;
+    referenceImageUrl?: string;
+  }) {
     const provider = await this.prisma.aiProvider.findUnique({
       where: { id: dto.providerId },
     })
@@ -770,20 +775,31 @@ export class AiAdminService {
 
     const startTime = Date.now()
     // 火山引擎豆包的图片生成 API 端点
-    const endpoint = provider.imageEndpoint || `${provider.baseUrl.replace('/api/v3', '/v1')}/images/generations`
+    const endpoint = provider.imageEndpoint || `${provider.baseUrl}/images/generations`
 
     try {
+      // 构建请求体（符合火山引擎豆包 API 格式）
       const requestBody: any = {
+        model: dto.model || 'doubao-seedream-5-0-260128', // 必须使用正确的模型 ID
         prompt: dto.prompt,
-        size: dto.size || '1024x1024',
-        quality: dto.quality || 'standard',
-        style: dto.style || 'natural',
-        n: dto.n || 1,
+        size: dto.size || '1024_1024', // 火山引擎尺寸格式：1024_1024, 2K, 4K 等
+        sequential_image_generation: dto.n && dto.n > 1 ? 'enabled' : 'disabled',
+        response_format: 'url',
+        stream: false,
+        watermark: true,
       }
 
-      // 如果指定了模型名称，添加到请求体
-      if (dto.model) {
-        requestBody.model = dto.model
+      // 添加可选参数
+      if (dto.seed !== undefined && dto.seed !== null) {
+        requestBody.seed = dto.seed
+      }
+
+      if (dto.negativePrompt && dto.negativePrompt.trim()) {
+        requestBody.negative_prompt = dto.negativePrompt
+      }
+
+      if (dto.referenceImageUrl && dto.referenceImageUrl.trim()) {
+        requestBody.reference_image_url = dto.referenceImageUrl
       }
 
       const response = await fetch(endpoint, {
