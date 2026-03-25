@@ -1,4 +1,5 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsBoolean, IsObject, IsEnum, Transform } from 'class-validator'
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsBoolean, IsObject, IsEnum } from 'class-validator'
+import { Transform } from 'class-transformer'
 
 /**
  * AI 服务商 DTO
