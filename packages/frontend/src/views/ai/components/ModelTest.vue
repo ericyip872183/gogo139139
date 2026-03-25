@@ -375,10 +375,12 @@ const handleChatStream = async (modelId: string, aiMessageIndex: number) => {
   aiMessage.loading = false
 
   try {
+    const token = localStorage.getItem('token')
     const response = await fetch('/api/ai/admin/models/' + modelId + '/chat-stream', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({
         providerId: selectedProviderId.value,
