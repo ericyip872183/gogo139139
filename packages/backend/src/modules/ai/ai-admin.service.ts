@@ -755,7 +755,7 @@ export class AiAdminService {
   /**
    * 测试图片生成
    */
-  async generateImage(dto: GenerateImageDto) {
+  async generateImage(dto: GenerateImageDto & { model?: string }) {
     const provider = await this.prisma.aiProvider.findUnique({
       where: { id: dto.providerId },
     })
@@ -773,20 +773,26 @@ export class AiAdminService {
     const endpoint = provider.imageEndpoint || `${provider.baseUrl.replace('/api/v3', '/v1')}/images/generations`
 
     try {
+      const requestBody: any = {
+        prompt: dto.prompt,
+        size: dto.size || '1024x1024',
+        quality: dto.quality || 'standard',
+        style: dto.style || 'natural',
+        n: dto.n || 1,
+      }
+
+      // 如果指定了模型名称，添加到请求体
+      if (dto.model) {
+        requestBody.model = dto.model
+      }
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${provider.apiKey}`,
         },
-        body: JSON.stringify({
-          model: "seedream-3-0", // 默认使用豆包 seedream 模型
-          prompt: dto.prompt,
-          size: dto.size || '1024x1024',
-          quality: dto.quality || 'standard',
-          style: dto.style || 'natural',
-          n: dto.n || 1,
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       const duration = Date.now() - startTime
@@ -796,14 +802,7 @@ export class AiAdminService {
         console.error('图片生成 API 错误:', {
           status: response.status,
           endpoint,
-          requestBody: JSON.stringify({
-            model: "seedream-3-0",
-            prompt: dto.prompt,
-            size: dto.size,
-            quality: dto.quality,
-            style: dto.style,
-            n: dto.n,
-          }),
+          requestBody: JSON.stringify(requestBody),
           error: errorData,
         })
         return {
