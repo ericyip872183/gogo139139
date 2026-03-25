@@ -765,11 +765,12 @@ export class AiAdminService {
     }
 
     if (!provider.supportImageGeneration) {
-      throw new BadRequestException('该服务商不支持图片生成')
+      throw new BadRequestException('该服务商不支持图片生成，请先在服务商配置中启用')
     }
 
     const startTime = Date.now()
-    const endpoint = provider.imageEndpoint || `${provider.baseUrl}/images/generations`
+    // 火山引擎豆包的图片生成 API 端点
+    const endpoint = provider.imageEndpoint || `${provider.baseUrl.replace('/api/v3', '/v1')}/images/generations`
 
     try {
       const response = await fetch(endpoint, {
@@ -779,6 +780,7 @@ export class AiAdminService {
           'Authorization': `Bearer ${provider.apiKey}`,
         },
         body: JSON.stringify({
+          model: "seedream-3-0", // 默认使用豆包 seedream 模型
           prompt: dto.prompt,
           size: dto.size || '1024x1024',
           quality: dto.quality || 'standard',
@@ -791,6 +793,19 @@ export class AiAdminService {
 
       if (!response.ok) {
         const errorData = await response.text()
+        console.error('图片生成 API 错误:', {
+          status: response.status,
+          endpoint,
+          requestBody: JSON.stringify({
+            model: "seedream-3-0",
+            prompt: dto.prompt,
+            size: dto.size,
+            quality: dto.quality,
+            style: dto.style,
+            n: dto.n,
+          }),
+          error: errorData,
+        })
         return {
           success: false,
           error: `API 错误：${response.status} - ${errorData}`,
@@ -799,6 +814,7 @@ export class AiAdminService {
       }
 
       const data = await response.json()
+      console.log('图片生成响应:', data)
 
       // 适配不同服务商的响应格式
       const images = data.data?.map((img: any) => ({
@@ -816,6 +832,7 @@ export class AiAdminService {
         cost,
       }
     } catch (error: any) {
+      console.error('图片生成异常:', error)
       return {
         success: false,
         error: error.message,
