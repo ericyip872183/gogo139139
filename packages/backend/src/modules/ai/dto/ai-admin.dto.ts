@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsBoolean, IsObject, IsEnum } from 'class-validator'
+import { IsString, IsNotEmpty, IsOptional, IsNumber, IsBoolean, IsObject, IsEnum, Transform } from 'class-validator'
 
 /**
  * AI 服务商 DTO
@@ -24,6 +24,10 @@ export class CreateProviderDto {
   @IsOptional()
   apiSecret?: string
 
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return true
+    return value
+  })
   @IsBoolean()
   @IsOptional()
   isEnabled?: boolean
@@ -50,6 +54,10 @@ export class UpdateProviderDto {
   @IsOptional()
   apiSecret?: string
 
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return undefined
+    return value
+  })
   @IsBoolean()
   @IsOptional()
   isEnabled?: boolean

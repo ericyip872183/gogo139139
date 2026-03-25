@@ -169,13 +169,13 @@ const handleSubmit = async () => {
   try {
     await formRef.value?.validate()
     submitting.value = true
-    const data = {
+    const data: any = {
       name: formData.name,
       baseUrl: formData.baseUrl,
       authType: formData.authType,
       apiKey: formData.apiKey,
-      apiSecret: formData.apiSecret,
-      isEnabled: formData.isEnabled,
+      apiSecret: formData.apiSecret || undefined,
+      isEnabled: !!formData.isEnabled,
     }
     if (isEdit.value && formData.id) {
       await aiAdminApi.updateProvider(formData.id, data)
