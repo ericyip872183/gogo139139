@@ -475,9 +475,11 @@ model AiProvider {
   id          String   @id @default(cuid())
   name        String   @db.VarChar(100)
   baseUrl     String   @db.VarChar(300)
+  imageEndpoint String? @db.VarChar(300)  // 图片生成 API 端点
   authType    String   @default("Bearer") @db.VarChar(50)
   apiKey      String   @db.VarChar(500)
   apiSecret   String?  @db.VarChar(500)
+  supportImageGeneration Boolean @default(false)
   isEnabled   Boolean  @default(false)
   config      Json?
   createdAt   DateTime @default(now())
@@ -496,6 +498,7 @@ model AiModel {
   providerId  String
   name        String   @db.VarChar(100)
   modelId     String   @db.VarChar(200)
+  type        String   @default("chat") @db.VarChar(50)  // chat | image
   isEp        Boolean  @default(false)
   inputPrice  Decimal  @default(0) @db.Decimal(10, 6)
   outputPrice Decimal  @default(0) @db.Decimal(10, 6)
@@ -510,6 +513,7 @@ model AiModel {
   tenantModels TenantAiModel[]
 
   @@index([providerId])
+  @@index([type])
   @@map("ai_models")
 }
 

@@ -8,7 +8,9 @@ import {
   UpdateModelDto,
   SetTenantModelDto,
   AllocateQuotaDto,
+  GenerateImageDto,
 } from './dto/ai-admin.dto'
+import { Response } from 'express'
 
 /**
  * AI 平台管理服务（超管专属）
@@ -100,8 +102,13 @@ export class AiAdminService {
    * 创建模型
    */
   async createModel(dto: CreateModelDto) {
+    const data = {
+      ...dto,
+      type: dto.type || 'chat',
+      isEnabled: dto.isEnabled ?? true,
+    }
     return this.prisma.aiModel.create({
-      data: dto,
+      data,
     })
   }
 
@@ -393,6 +400,15 @@ export class AiAdminService {
       throw new Error('服务商不存在')
     }
 
+    // 获取模型信息，使用实际的 modelId 字段（如 doubao-lite-4k）
+    const model = await this.prisma.aiModel.findUnique({
+      where: { id: modelId },
+    })
+
+    if (!model) {
+      throw new Error('模型不存在')
+    }
+
     const startTime = Date.now()
 
     // 构建 system prompt
@@ -416,7 +432,7 @@ export class AiAdminService {
           'Authorization': `Bearer ${provider.apiKey}`,
         },
         body: JSON.stringify({
-          model: modelId,
+          model: model.modelId, // 使用实际的模型 ID 字段
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: message },
@@ -452,10 +468,7 @@ export class AiAdminService {
       const tokensUsed = data.usage?.total_tokens || 0
 
       // 计算成本
-      const model = await this.prisma.aiModel.findUnique({
-        where: { id: modelId },
-      })
-      const cost = tokensUsed * (model?.inputPrice?.toNumber() || 0.001) / 1000
+      const cost = tokensUsed * (model.inputPrice?.toNumber() || 0.001) / 1000
 
       // 更新模型状态为在线
       await this.prisma.aiModel.update({
@@ -579,5 +592,235 @@ export class AiAdminService {
     )
 
     return results
+  }
+
+  // ─── 流式对话 ───────────────────────────────────────
+
+  /**
+   * 流式对话（SSE）
+   */
+  async chatStream(
+    res: Response,
+    providerId: string,
+    modelId: string,
+    message: string,
+    mode: 'chat' | 'mock_patient' = 'chat',
+  ) {
+    const provider = await this.prisma.aiProvider.findUnique({
+      where: { id: providerId },
+    })
+
+    if (!provider) {
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: '服务商不存在' }))
+      return
+    }
+
+    const model = await this.prisma.aiModel.findUnique({
+      where: { id: modelId },
+    })
+
+    if (!model) {
+      res.writeHead(400, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: '模型不存在' }))
+      return
+    }
+
+    // 构建 system prompt
+    let systemPrompt = '你是一个有帮助的 AI 助手。'
+    if (mode === 'mock_patient') {
+      systemPrompt = `你是一名标准化病人（SP），正在配合医学生进行问诊练习。
+- 你是一位 45 岁左右的中年人
+- 主诉：反复胃脘部隐痛 3 个月
+- 现病史：3 个月前因饮食不规律出现胃脘部隐痛，喜温喜按，进食后缓解，空腹时加重
+- 伴随症状：神疲乏力，食欲不振，大便溏薄
+- 舌脉：舌淡苔白，脉细弱
+- 请以患者口吻回答，描述症状，不要直接说出中医诊断
+- 回答要口语化，像真实病人一样`
+    }
+
+    // 设置 SSE 响应头
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+    res.setHeader('X-Accel-Buffering', 'no')
+
+    const startTime = Date.now()
+    let fullContent = ''
+    let totalTokens = 0
+
+    try {
+      const response = await fetch(provider.baseUrl + '/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${provider.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: model.modelId,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: message },
+          ],
+          temperature: 0.7,
+          max_tokens: 2000,
+          stream: true, // 启用流式模式
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.text()
+        res.write(`data: ${JSON.stringify({ type: 'error', error: `API 错误：${response.status}` })}\n\n`)
+        res.end()
+        return
+      }
+
+      // 读取流式响应
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) {
+        res.write(`data: ${JSON.stringify({ type: 'error', error: '无法读取响应流' })}\n\n`)
+        res.end()
+        return
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') continue
+
+            try {
+              const parsed = JSON.parse(data)
+              const content = parsed.choices?.[0]?.delta?.content || ''
+              if (content) {
+                fullContent += content
+                res.write(`data: ${JSON.stringify({ type: 'content', content })}\n\n`)
+              }
+            } catch (e) {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+
+      // 计算 tokens（估算）
+      totalTokens = Math.ceil(fullContent.length / 4)
+      const duration = Date.now() - startTime
+      const cost = totalTokens * (model.inputPrice?.toNumber() || 0.001) / 1000
+
+      // 发送完成消息
+      res.write(`data: ${JSON.stringify({
+        type: 'done',
+        duration,
+        tokens: totalTokens,
+        cost,
+      })}\n\n`)
+      res.end()
+
+      // 更新模型状态为在线
+      await this.prisma.aiModel.update({
+        where: { id: modelId },
+        data: {
+          lastStatus: 'online',
+          lastCheckedAt: new Date(),
+          lastError: null,
+        },
+      })
+    } catch (error: any) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`)
+      res.end()
+
+      // 更新模型状态为离线
+      await this.prisma.aiModel.update({
+        where: { id: modelId },
+        data: {
+          lastStatus: 'offline',
+          lastCheckedAt: new Date(),
+          lastError: error.message,
+        },
+      })
+    }
+  }
+
+  // ─── 图片生成 ───────────────────────────────────────
+
+  /**
+   * 测试图片生成
+   */
+  async generateImage(dto: GenerateImageDto) {
+    const provider = await this.prisma.aiProvider.findUnique({
+      where: { id: dto.providerId },
+    })
+
+    if (!provider) {
+      throw new BadRequestException('服务商不存在')
+    }
+
+    if (!provider.supportImageGeneration) {
+      throw new BadRequestException('该服务商不支持图片生成')
+    }
+
+    const startTime = Date.now()
+    const endpoint = provider.imageEndpoint || `${provider.baseUrl}/images/generations`
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${provider.apiKey}`,
+        },
+        body: JSON.stringify({
+          prompt: dto.prompt,
+          size: dto.size || '1024x1024',
+          quality: dto.quality || 'standard',
+          style: dto.style || 'natural',
+          n: dto.n || 1,
+        }),
+      })
+
+      const duration = Date.now() - startTime
+
+      if (!response.ok) {
+        const errorData = await response.text()
+        return {
+          success: false,
+          error: `API 错误：${response.status} - ${errorData}`,
+          duration,
+        }
+      }
+
+      const data = await response.json()
+
+      // 适配不同服务商的响应格式
+      const images = data.data?.map((img: any) => ({
+        url: img.url || img.image?.url,
+        revisedPrompt: img.revised_prompt,
+      })) || []
+
+      // 计算成本（按张数计算，默认 0.044 元/张）
+      const cost = images.length * 0.044
+
+      return {
+        success: true,
+        images,
+        duration,
+        cost,
+      }
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message,
+        duration: Date.now() - startTime,
+      }
+    }
   }
 }

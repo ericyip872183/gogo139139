@@ -84,6 +84,10 @@ export class CreateModelDto {
   @IsNotEmpty()
   modelId: string
 
+  @IsString()
+  @IsOptional()
+  type?: string = 'chat'  // chat | image
+
   @IsBoolean()
   @IsOptional()
   isEp?: boolean = false
@@ -110,6 +114,10 @@ export class UpdateModelDto {
   @IsOptional()
   modelId?: string
 
+  @IsString()
+  @IsOptional()
+  type?: string
+
   @IsBoolean()
   @IsOptional()
   isEp?: boolean
@@ -125,6 +133,35 @@ export class UpdateModelDto {
   @IsBoolean()
   @IsOptional()
   isEnabled?: boolean
+}
+
+/**
+ * 图片生成 DTO
+ */
+export class GenerateImageDto {
+  @IsString()
+  @IsNotEmpty()
+  providerId: string
+
+  @IsString()
+  @IsNotEmpty()
+  prompt: string
+
+  @IsString()
+  @IsOptional()
+  size?: string = '1024x1024'
+
+  @IsString()
+  @IsOptional()
+  quality?: string = 'standard'
+
+  @IsString()
+  @IsOptional()
+  style?: string = 'natural'
+
+  @IsNumber()
+  @IsOptional()
+  n?: number = 1
 }
 
 /**

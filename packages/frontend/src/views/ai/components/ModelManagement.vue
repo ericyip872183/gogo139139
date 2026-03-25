@@ -24,7 +24,13 @@
 
       <el-table :data="models" v-loading="loading" stripe>
         <el-table-column prop="id" label="ID" width="180" />
-        <el-table-column label="连接状态" width="100">
+        <el-table-column label="类型" width="80">
+          <template #default="{ row }">
+            <el-tag v-if="row.type === 'image'" type="warning" size="small">图片</el-tag>
+            <el-tag v-else type="info" size="small">对话</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="连接状态" width="120">
           <template #default="{ row }">
             <div class="status-indicator">
               <span
@@ -41,6 +47,11 @@
               >
                 <el-icon><Refresh /></el-icon>
               </el-button>
+              <el-tag v-if="row.lastStatus === 'error' && row.lastError" type="warning" size="small" class="error-tag">
+                <el-tooltip :content="row.lastError" placement="top" :max-width="300">
+                  <el-icon><Warning /></el-icon>
+                </el-tooltip>
+              </el-tag>
             </div>
           </template>
         </el-table-column>
@@ -91,6 +102,13 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="模型类型" prop="type">
+          <el-radio-group v-model="formData.type">
+            <el-radio label="chat">文本对话</el-radio>
+            <el-radio label="image">图片生成</el-radio>
+          </el-radio-group>
+          <div class="form-tip">图片生成模型用于文生图功能</div>
+        </el-form-item>
         <el-form-item label="模型名称" prop="name">
           <el-input v-model="formData.name" placeholder="例如：豆包轻量大模型" />
         </el-form-item>
@@ -107,6 +125,7 @@
         </el-form-item>
         <el-form-item label="输出价格" prop="outputPrice">
           <el-input-number v-model="formData.outputPrice" :min="0" :step="0.000001" placeholder="元/千 tokens" style="width: 100%" />
+          <div class="form-tip">图片生成模型只需填写输入价格</div>
         </el-form-item>
         <el-form-item label="状态">
           <el-switch v-model="formData.isEnabled" />
@@ -122,7 +141,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElTooltip } from 'element-plus'
+import { Refresh, Warning } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { aiAdminApi, type AiModel, type AiProvider } from '@/api/ai-admin'
 
@@ -135,10 +155,11 @@ const submitting = ref(false)
 const filterProviderId = ref<string>('')
 const formRef = ref<FormInstance>()
 
-const formData = reactive<Partial<AiModel>>({
+const formData = reactive<Partial<AiModel> & { type?: string }>({
   providerId: '',
   name: '',
   modelId: '',
+  type: 'chat',
   isEp: false,
   inputPrice: 0,
   outputPrice: 0,
@@ -149,10 +170,16 @@ const rules: FormRules = {
   providerId: [{ required: true, message: '请选择服务商', trigger: 'change' }],
   name: [{ required: true, message: '请输入模型名称', trigger: 'blur' }],
   modelId: [{ required: true, message: '请输入模型 ID 或 EP', trigger: 'blur' }],
+  type: [{ required: true, message: '请选择模型类型', trigger: 'change' }],
 }
 
 const loadProviders = async () => {
-  providers.value = await aiAdminApi.getProviders()
+  try {
+    providers.value = await aiAdminApi.getProviders()
+  } catch (e: any) {
+    ElMessage.error(e.message || '加载服务商失败')
+    providers.value = []
+  }
 }
 
 const loadModels = async () => {
@@ -172,6 +199,7 @@ const handleAdd = () => {
     providerId: providers.value[0]?.id || '',
     name: '',
     modelId: '',
+    type: 'chat',
     isEp: false,
     inputPrice: 0,
     outputPrice: 0,
@@ -187,6 +215,7 @@ const handleEdit = (row: AiModel) => {
     providerId: row.providerId,
     name: row.name,
     modelId: row.modelId,
+    type: row.type || 'chat',
     isEp: row.isEp,
     inputPrice: row.inputPrice,
     outputPrice: row.outputPrice,
@@ -216,10 +245,11 @@ const handleSubmit = async () => {
   try {
     await formRef.value?.validate()
     submitting.value = true
-    const data = {
+    const data: any = {
       providerId: formData.providerId,
       name: formData.name,
       modelId: formData.modelId,
+      type: formData.type || 'chat',
       isEp: formData.isEp,
       inputPrice: formData.inputPrice,
       outputPrice: formData.outputPrice,
@@ -229,7 +259,7 @@ const handleSubmit = async () => {
       await aiAdminApi.updateModel(formData.id, data)
       ElMessage.success('更新成功')
       // 更新后自动检测状态
-      if (formData.isEnabled) {
+      if (formData.isEnabled && formData.type === 'chat') {
         await checkSingleModelStatus(formData.id!)
       }
     } else {
@@ -275,11 +305,41 @@ const handleCheckStatus = async (row: AiModel) => {
     if (result.success) {
       ElMessage.success('模型连接正常')
     } else {
-      ElMessage.error(`模型测试失败：${result.error}`)
+      // 显示详细错误信息
+      const errorMsg = result.error || '未知错误'
+      ElMessageBox.alert(
+        `可能的问题：
+1. API Key 无效或已过期
+2. 模型 ID/EP 填写错误
+3. 服务商 API 地址配置错误
+4. 账户余额不足
+5. 网络连接问题
+
+详细错误：${errorMsg}`,
+        `模型测试失败`,
+        {
+          dangerouslyUseHTMLString: true,
+          confirmButtonText: '确定',
+          type: 'error',
+        }
+      )
     }
     loadModels()
   } catch (e: any) {
-    ElMessage.error(e.message || '检测失败')
+    ElMessageBox.alert(
+      `可能的问题：
+1. 后端服务未启动
+2. 接口请求失败
+3. 服务商配置不存在
+
+详细错误：${e.message || '未知错误'}`,
+      `检测失败`,
+      {
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: '确定',
+        type: 'error',
+      }
+    )
   }
 }
 
@@ -343,5 +403,8 @@ onMounted(() => {
 .status-dot.unknown {
   background-color: #dcdfe6;
   box-shadow: 0 0 6px #dcdfe6;
+}
+.error-tag {
+  cursor: pointer;
 }
 </style>

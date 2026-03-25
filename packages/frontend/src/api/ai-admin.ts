@@ -24,6 +24,7 @@ export interface AiModel {
   providerId: string
   name: string
   modelId: string
+  type: 'chat' | 'image'  // 模型类型：chat=聊天，image=图片生成
   isEp: boolean
   inputPrice: number
   outputPrice: number
@@ -42,6 +43,20 @@ export interface ModelTestResult {
   success: boolean
   content?: string
   tokens?: number
+  duration?: number
+  cost?: number
+  error?: string
+}
+
+/**
+ * 图片生成结果
+ */
+export interface ImageGenerationResult {
+  success: boolean
+  images?: Array<{
+    url: string
+    revisedPrompt?: string
+  }>
   duration?: number
   cost?: number
   error?: string
@@ -294,4 +309,12 @@ export const aiAdminApi = {
    * 批量检测所有模型状态
    */
   checkAllModels: () => request.post<ModelStatus[]>('/ai/admin/models/check-all'),
+
+  // ─── 图片生成 ───────────────────────────────────────
+
+  /**
+   * 测试图片生成
+   */
+  generateImage: (data: { providerId: string; prompt: string; size?: string; quality?: string; style?: string; n?: number }) =>
+    request.post<ImageGenerationResult>('/ai/admin/models/generate-image', data),
 }

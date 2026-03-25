@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Query, Param, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Put, Delete, Body, Query, Param, UseGuards, Res } from '@nestjs/common'
 import { AuthGuard } from '@nestjs/passport'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
@@ -13,7 +13,9 @@ import {
   AllocateQuotaDto,
   RequestQuotaDto,
   GetStatsDto,
+  GenerateImageDto,
 } from './dto/ai-admin.dto'
+import { Response } from 'express'
 
 /**
  * AI 平台管理控制器（超管专属）
@@ -233,5 +235,31 @@ export class AiAdminController {
   @Roles('SUPER_ADMIN')
   checkAllModels() {
     return this.service.checkAllModels()
+  }
+
+  // ─── 图片生成 ───────────────────────────────────────
+
+  /**
+   * 测试图片生成
+   */
+  @Post('models/generate-image')
+  @Roles('SUPER_ADMIN')
+  generateImage(@Body() dto: GenerateImageDto) {
+    return this.service.generateImage(dto)
+  }
+
+  // ─── 流式对话 ───────────────────────────────────────
+
+  /**
+   * 流式对话（SSE）
+   */
+  @Post('models/:id/chat-stream')
+  @Roles('SUPER_ADMIN')
+  async chatStream(
+    @Param('id') modelId: string,
+    @Body() body: { providerId: string; message: string; mode?: 'chat' | 'mock_patient' },
+    @Res() res: Response,
+  ) {
+    return this.service.chatStream(res, body.providerId, modelId, body.message, body.mode || 'chat')
   }
 }
