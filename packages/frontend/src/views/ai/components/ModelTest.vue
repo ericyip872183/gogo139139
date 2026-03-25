@@ -470,17 +470,29 @@ const handleImageGeneration = async (modelId: string, aiMessageIndex: number, pr
     const styleSuffix = stylePrompts[imageConfig.style] || ''
     const finalPrompt = prompt + styleSuffix
 
-    const result = await aiAdminApi.generateImage({
+    // 构建请求参数（过滤掉 undefined 值）
+    const params: any = {
       providerId: selectedProviderId.value,
       model: model?.modelId,
       prompt: finalPrompt,
       size: imageConfig.size,
       style: imageConfig.style,
       n: imageConfig.n,
-      seed: imageConfig.seed,
-      negativePrompt: imageConfig.negativePrompt,
-      referenceImageUrl: imageConfig.referenceImageUrl,
-    })
+      watermark: imageConfig.watermark,
+    }
+
+    // 只在有值时添加可选参数
+    if (imageConfig.seed) {
+      params.seed = imageConfig.seed
+    }
+    if (imageConfig.negativePrompt && imageConfig.negativePrompt.trim()) {
+      params.negativePrompt = imageConfig.negativePrompt
+    }
+    if (imageConfig.referenceImageUrl && imageConfig.referenceImageUrl.trim()) {
+      params.referenceImageUrl = imageConfig.referenceImageUrl
+    }
+
+    const result = await aiAdminApi.generateImage(params)
 
     if (result.success && result.images && result.images.length > 0) {
       aiMessage.type = 'image'

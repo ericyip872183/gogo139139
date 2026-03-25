@@ -149,6 +149,10 @@ export class GenerateImageDto {
 
   @IsString()
   @IsOptional()
+  model?: string  // 模型 ID
+
+  @IsString()
+  @IsOptional()
   size?: string = '1024_1024'  // 火山引擎格式：1024_1024, 2K, 4K, 1024_1792, 1792_1024
 
   @IsString()
@@ -161,7 +165,7 @@ export class GenerateImageDto {
 
   @IsNumber()
   @IsOptional()
-  seed?: number  // 随机种子（可选）
+  seed?: number | null  // 随机种子（可选）
 
   @IsString()
   @IsOptional()
@@ -170,6 +174,10 @@ export class GenerateImageDto {
   @IsString()
   @IsOptional()
   referenceImageUrl?: string  // 参考图 URL
+
+  @IsBoolean()
+  @IsOptional()
+  watermark?: boolean = true  // 是否添加水印
 }
 
 /**
