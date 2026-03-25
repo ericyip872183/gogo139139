@@ -51,14 +51,28 @@ pnpm run dev
 **测试步骤**：
 
 1. 点击「新增服务商」按钮
-2. 填写以下信息：
-   ```
-   名称：火山引擎豆包
-   API 地址：https://ark.cn-beijing.volces.com/api/v3
-   认证方式：Bearer Token
-   API Key: （你的火山引擎 API Key）
-   状态：已启用
-   ```
+2. 填写以下信息（根据选择的服务商）：
+
+**火山引擎豆包配置**：
+```
+名称：火山引擎豆包
+API 地址：https://ark.cn-beijing.volces.com/api/v3
+认证方式：Bearer Token
+API Key: （你的火山引擎 API Key）
+API Secret: （可选，部分场景需要）
+状态：已启用
+```
+
+**Minimax（海螺 AI）配置**：
+```
+名称：Minimax
+API 地址：https://api.minimax.chat/v1
+认证方式：Bearer Token
+API Key: （你的 Minimax API Key）
+API Secret: （可选，部分场景需要）
+状态：已启用
+```
+
 3. 点击「提交」
 4. 验证：列表中显示新增的服务商
 
@@ -71,6 +85,69 @@ pnpm run dev
 curl http://localhost:3000/api/ai/admin/providers \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
+
+---
+
+### 2.2.1 服务商 API Key 获取指南
+
+#### 火山引擎豆包 API Key 获取
+
+1. **访问火山引擎控制台**
+   - 网址：https://console.volcengine.com/
+   - 注册/登录火山引擎账号
+
+2. **进入方舟大模型平台**
+   - 导航：产品与服务 → 人工智能 → 方舟大模型平台
+   - 或直接访问：https://console.volcengine.com/ark
+
+3. **创建/获取 API Key**
+   - 点击左侧「访问凭证」或「API Key 管理」
+   - 点击「创建 API Key」
+   - 输入名称（如：panlei-system）
+   - 复制生成的 API Key（仅显示一次，请妥善保存）
+
+4. **开通豆包大模型服务**
+   - 导航：模型广场 → 选择豆包系列模型（如 doubao-lite、doubao-pro）
+   - 点击「开通服务」
+   - 确认计费方式（按量付费/资源包）
+
+5. **查看价格**
+   - 豆包 Lite（doubao-lite-4k）：输入 ¥0.0008/千 tokens，输出 ¥0.002/千 tokens
+   - 豆包 Pro（doubao-pro-4k）：输入 ¥0.005/千 tokens，输出 ¥0.015/千 tokens
+
+**参考文档**：
+- [火山引擎方舟大模型接入指南](https://www.volcengine.com/docs/82379)
+- [豆包大模型 API 文档](https://www.volcengine.com/docs/82379/1298459)
+
+---
+
+#### Minimax API Key 获取
+
+1. **访问 Minimax 开放平台**
+   - 网址：https://platform.minimaxi.com/
+   - 注册/登录 Minimax 账号
+
+2. **进入控制台**
+   - 点击右上角头像 → 控制台
+
+3. **获取 API Key**
+   - 导航：开发设置 → API Key 管理
+   - 点击「创建 API Key」
+   - 输入名称（如：panlei-system）
+   - 复制生成的 API Key（仅显示一次，请妥善保存）
+
+4. **开通模型服务**
+   - 导航：模型广场 → 选择模型（如 MiniMax-01、abab6.5 等）
+   - 点击「开通」
+   - 确认计费方式
+
+5. **查看价格**
+   - MiniMax-01：输入 ¥0.001/千 tokens，输出 ¥0.001/千 tokens
+   - abab6.5：输入 ¥0.005/千 tokens，输出 ¥0.005/千 tokens
+
+**参考文档**：
+- [Minimax API 文档](https://platform.minimaxi.com/document/API)
+- [Minimax 模型介绍](https://platform.minimaxi.com/document/Models)
 
 ---
 
