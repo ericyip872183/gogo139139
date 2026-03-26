@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: panlei-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: panlei_root_2024
+      MYSQL_DATABASE: panlei_dev
+      MYSQL_USER: panlei
+      MYSQL_PASSWORD: panlei_dev_2024
+    ports:
+      - '3306:3306'
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: panlei-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --requirepass panlei_redis_2024
+
+  backend:
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile.dev
+    container_name: panlei-backend
+    environment:
+      DATABASE_URL: mysql://panlei:panlei_dev_2024@mysql:3306/panlei_dev
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: panlei_redis_2024
+      JWT_SECRET: panlei_jwt_secret_key_2024
+      NODE_ENV: development
+    ports:
+      - '3000:3000'
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - backend_uploads:/app/packages/backend/uploads
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: packages/frontend/Dockerfile.dev
+    container_name: panlei-frontend
+    ports:
+      - '5173:5173'
+    environment:
+      VITE_API_BASE_URL: http://localhost:3000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  redis_data:
+  backend_uploads:

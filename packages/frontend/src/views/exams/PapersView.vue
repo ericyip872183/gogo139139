@@ -23,8 +23,9 @@
         <el-table-column label="创建时间" width="160">
           <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
+            <el-button link type="warning" size="small" @click="openPreview(row)">预览试卷</el-button>
             <el-button link type="primary" size="small" @click="openEdit(row.id)">编辑</el-button>
             <el-button link type="success" size="small" @click="$router.push(`/exams?paperId=${row.id}`)">发布考试</el-button>
             <el-button link type="danger" size="small" @click="handleRemove(row)">删除</el-button>
@@ -112,6 +113,160 @@
         <el-button type="primary" :loading="submitting" @click="handleSubmit">保存试卷</el-button>
       </template>
     </el-dialog>
+
+    <!-- 试卷预览弹窗 -->
+    <el-dialog
+      v-model="previewVisible"
+      :title="`${previewPaper?.title || '试卷预览'} - 学生模式`"
+      width="1000px"
+      @close="resetPreview"
+    >
+      <!-- 试卷信息 -->
+      <div class="preview-header">
+        <div class="preview-info">
+          <span class="info-label">考试时长：</span>
+          <el-tag type="info">{{ previewPaper?.duration }} 分钟</el-tag>
+          <span style="margin: 0 16px" />
+          <span class="info-label">总分：</span>
+          <el-tag type="warning">{{ previewTotalScore }} 分</el-tag>
+          <span style="margin: 0 16px" />
+          <span class="info-label">题目数量：</span>
+          <el-tag type="success">{{ previewPaperQuestions.length }} 题</el-tag>
+        </div>
+      </div>
+
+      <!-- 答题区域 -->
+      <div class="preview-body">
+        <div
+          v-for="(pq, index) in previewPaperQuestions"
+          :key="pq.id"
+          :class="['preview-question', `type-${pq.question.type}`]"
+        >
+          <!-- 题目头部 -->
+          <div class="question-header">
+            <span class="question-index">{{ index + 1 }}.</span>
+            <el-tag size="small" :type="getTypeTag(pq.question.type)">
+              {{ getTypeLabel(pq.question.type) }}
+            </el-tag>
+            <span class="question-score">{{ pq.score }} 分</span>
+          </div>
+
+          <!-- 题目内容 -->
+          <div class="question-content" v-html="pq.question.content" />
+
+          <!-- 媒体附件 -->
+          <div v-if="pq.question.mediaItems?.length" class="question-media">
+            <!-- 多个附件时显示切换标签 -->
+            <div v-if="pq.question.mediaItems.length > 1" class="media-tabs">
+              <el-tag
+                v-for="(media, idx) in pq.question.mediaItems"
+                :key="media.id"
+                :type="(currentMediaIndex[pq.id] ?? 0) === idx ? 'primary' : 'info'"
+                effect="plain"
+                size="small"
+                style="cursor: pointer; margin-right: 8px"
+                @click="currentMediaIndex[pq.id] = idx"
+              >
+                {{ getMediaIcon(media.type) }} 附件 {{ idx + 1 }}
+              </el-tag>
+            </div>
+
+            <!-- 媒体内容显示 -->
+            <div class="media-content">
+              <!-- 图片 -->
+              <div v-if="getCurrentMedia(pq.id)?.type === 'image'" class="media-image">
+                <el-image
+                  :src="getCurrentMedia(pq.id)?.url"
+                  fit="contain"
+                  style="width: 100%"
+                  @load="(e) => onMediaLoad(pq.id, getCurrentMedia(pq.id), e)"
+                  @error="onMediaError(pq.id, getCurrentMedia(pq.id))"
+                >
+                  <template #error>
+                    <div class="image-error">
+                      <el-icon :size="48" color="#f56c6c"><Picture /></el-icon>
+                      <div>图片加载失败</div>
+                      <div class="error-url">{{ getCurrentMedia(pq.id)?.url }}</div>
+                    </div>
+                  </template>
+                </el-image>
+              </div>
+              <!-- 视频 -->
+              <div v-else-if="getCurrentMedia(pq.id)?.type === 'video'" class="media-video">
+                <video :src="getCurrentMedia(pq.id)?.url" controls style="width: 100%"
+                  @loadstart="onMediaLoadStart(pq.id)"
+                  @loadeddata="(e) => onMediaLoaded(pq.id, e)"
+                  @error="onMediaError(pq.id, getCurrentMedia(pq.id))" />
+              </div>
+              <!-- 音频 -->
+              <div v-else-if="getCurrentMedia(pq.id)?.type === 'audio'" class="media-audio">
+                <audio :src="getCurrentMedia(pq.id)?.url" controls style="width: 100%"
+                  @loadstart="onMediaLoadStart(pq.id)"
+                  @loadeddata="onMediaLoaded(pq.id)"
+                  @error="onMediaError(pq.id, getCurrentMedia(pq.id))" />
+              </div>
+              <!-- 其他文件 -->
+              <div v-else class="media-file">
+                <el-icon :size="48" color="#909399"><Document /></el-icon>
+                <div class="media-file-name">{{ getCurrentMedia(pq.id)?.caption || getCurrentMedia(pq.id)?.url.split('/').pop() }}</div>
+                <el-button type="primary" size="small" @click="downloadMedia(getCurrentMedia(pq.id)?.url)">下载</el-button>
+              </div>
+            </div>
+
+            <!-- 单个附件时显示文件名 -->
+            <div v-if="pq.question.mediaItems.length === 1 && getCurrentMedia(pq.id)?.caption" class="media-caption">
+              {{ getCurrentMedia(pq.id)?.caption }}
+            </div>
+          </div>
+
+          <!-- 选项区域 -->
+          <div class="question-options" v-if="pq.question.options?.length">
+            <div
+              v-for="opt in pq.question.options"
+              :key="opt.id"
+              :class="['option-item', {
+                'is-selected': isOptionSelected(pq.id, opt.id),
+                'is-correct': showAnswer && checkAnswer(pq.id, opt.id),
+                'is-wrong': showAnswer && isSelectedButWrong(pq.id, opt.id)
+              }]"
+              @click="selectOption(pq.id, opt.id)"
+            >
+              <span class="option-label">{{ opt.label }}.</span>
+              <span class="option-content" v-html="opt.content" />
+              <!-- 答案验证标识 -->
+              <el-icon v-if="showAnswer && checkAnswer(pq.id, opt.id)" class="correct-icon"><Circle-Check-Filled /></el-icon>
+              <el-icon v-if="showAnswer && isSelectedButWrong(pq.id, opt.id)" class="wrong-icon"><Circle-Close-Filled /></el-icon>
+            </div>
+          </div>
+
+          <!-- 填空题答案输入 -->
+          <div v-if="pq.question.type === 'FILL'" class="question-fill">
+            <el-input
+              v-model="userAnswers[pq.id]"
+              placeholder="请输入答案"
+              clearable
+              style="width: 100%"
+            />
+          </div>
+
+          <!-- 单题验证结果 -->
+          <div v-if="showAnswer" :class="['question-result', getResultClass(pq.id)]">
+            <el-icon><component :is="getResultIcon(pq.id)" /></el-icon>
+            <span>{{ getResultText(pq.id, pq.question.type) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 操作按钮 -->
+      <template #footer>
+        <div class="preview-footer">
+          <el-button @click="previewVisible = false">关闭</el-button>
+          <el-button type="primary" @click="toggleAnswer">
+            {{ showAnswer ? '隐藏答案' : '显示答案/交卷' }}
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -119,7 +274,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Search, Plus, Delete, Check } from '@element-plus/icons-vue'
+import { Search, Plus, Delete, Check, CircleCheckFilled, CircleCloseFilled, Document, VideoPlay, VideoCamera, Headset, Picture } from '@element-plus/icons-vue'
 import { papersApi, type Paper } from '@/api/exams'
 import { questionsApi, type Question } from '@/api/questions'
 
@@ -263,6 +418,231 @@ async function handleSubmit() {
 
 function resetForm() { formRef.value?.resetFields() }
 
+// ─── 试卷预览 ──────────────────────────────────────────
+const previewVisible = ref(false)
+const previewPaper = ref<Paper | null>(null)
+const previewPaperQuestions = ref<any[]>([])
+const showAnswer = ref(false)
+const userAnswers = ref<Record<string, any>>({})
+const currentMediaIndex = ref<Record<string, number>>({}) // 每道题当前显示的媒体索引
+
+const previewTotalScore = computed(() => previewPaperQuestions.value.reduce((s, pq) => s + (pq.score ?? 0), 0))
+
+// 获取当前选中的媒体
+const currentMedia = computed(() => {
+  // 需要一个上下文来获取当前题目，这里改为函数方式
+  return null
+})
+
+function getCurrentMedia(pqId: string) {
+  const pq = previewPaperQuestions.value.find(p => p.id === pqId)
+  if (!pq?.question?.mediaItems?.length) return null
+  const idx = currentMediaIndex.value[pqId] ?? 0
+  const media = pq.question.mediaItems[idx]
+  console.log('[getCurrentMedia] pqId:', pqId, 'idx:', idx, 'media:', media)
+  return media
+}
+
+// 媒体加载事件处理
+function onMediaLoad(pqId: string, media: any, event: Event) {
+  const target = event.target as HTMLImageElement
+  console.log('[媒体加载 - 图片] 加载成功:', pqId)
+  console.log('[媒体加载 - 图片] 原始尺寸:', media?.url)
+  console.log('[媒体加载 - 图片] 渲染尺寸:', {
+    width: target?.naturalWidth,
+    height: target?.naturalHeight,
+    clientWidth: target?.clientWidth,
+    clientHeight: target?.clientHeight,
+    offsetWidth: target?.offsetWidth,
+    offsetHeight: target?.offsetHeight
+  })
+
+  // 查找父容器尺寸
+  const parent = target?.closest('.question-media')
+  if (parent) {
+    console.log('[媒体加载 - 图片] 父容器尺寸:', {
+      width: parent.clientWidth,
+      height: parent.clientHeight
+    })
+  }
+}
+
+function onMediaLoadStart(pqId: string) {
+  console.log('[媒体加载] 开始加载:', pqId)
+}
+
+function onMediaLoaded(pqId: string, event?: Event) {
+  const target = event?.target as HTMLVideoElement | HTMLAudioElement
+  console.log('[媒体加载] 加载完成:', pqId)
+  if (target) {
+    console.log('[媒体加载] 尺寸:', {
+      width: target.videoWidth || 'N/A',
+      height: target.videoHeight || 'N/A',
+      clientWidth: target.clientWidth,
+      clientHeight: target.clientHeight
+    })
+  }
+}
+
+function onMediaError(pqId: string, media: any) {
+  console.error('[媒体加载] 加载失败:', pqId, media?.url)
+}
+
+// 打开预览
+async function openPreview(row: Paper) {
+  previewPaper.value = row
+  showAnswer.value = false
+  userAnswers.value = {}
+  currentMediaIndex.value = {} // 重置媒体索引
+  previewVisible.value = true
+
+  try {
+    // 获取试卷详情（包含题目）
+    console.log('[试卷预览] 开始获取试卷详情，ID:', row.id)
+    const detail = await papersApi.get(row.id) as any
+    console.log('[试卷预览] 获取成功，完整响应:', detail)
+    console.log('[试卷预览] 题目数量:', detail.paperQuestions?.length)
+
+    // 检查每道题的媒体资源
+    detail.paperQuestions?.forEach((pq: any, idx: number) => {
+      console.log(`[试卷预览] 题目 ${idx + 1}:`, {
+        id: pq.id,
+        content: pq.question?.content?.substring(0, 50) + '...',
+        mediaItems: pq.question?.mediaItems,
+        mediaCount: pq.question?.mediaItems?.length
+      })
+    })
+
+    previewPaperQuestions.value = detail.paperQuestions || []
+  } catch (e: any) {
+    console.error('[试卷预览] 获取失败:', e)
+    ElMessage.error('获取试卷失败：' + e.message)
+  }
+}
+
+// 重置预览
+function resetPreview() {
+  previewPaper.value = null
+  previewPaperQuestions.value = []
+  showAnswer.value = false
+  userAnswers.value = {}
+  currentMediaIndex.value = {}
+}
+
+// 获取媒体图标文字
+function getMediaIcon(type: string) {
+  if (type === 'image') return '🖼️'
+  if (type === 'video') return '🎬'
+  if (type === 'audio') return '🎧'
+  return '📄'
+}
+
+// 下载媒体文件
+function downloadMedia(url: string) {
+  const a = document.createElement('a')
+  a.href = url
+  a.download = url.split('/').pop() || 'file'
+  a.click()
+}
+
+// 切换答案显示
+function toggleAnswer() {
+  showAnswer.value = !showAnswer.value
+}
+
+// 题型标签
+function getTypeTag(t: string) {
+  return { SINGLE: '', MULTIPLE: 'warning', JUDGE: 'success', FILL: 'info' }[t] as any || ''
+}
+
+// 题型文字
+function getTypeLabel(t: string) {
+  return { SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL: '填空' }[t] || t
+}
+
+// 是否已选
+function isOptionSelected(paperQuestionId: string, optionId: string) {
+  const ans = userAnswers.value[paperQuestionId]
+  if (!ans) return false
+  return Array.isArray(ans) ? ans.includes(optionId) : ans === optionId
+}
+
+// 选择选项
+function selectOption(paperQuestionId: string, optionId: string) {
+  const pq = previewPaperQuestions.value.find(p => p.id === paperQuestionId)
+  if (!pq) return
+
+  const isMultiple = pq.question.type === 'MULTIPLE'
+  const current = userAnswers.value[paperQuestionId]
+
+  if (isMultiple) {
+    const arr = Array.isArray(current) ? current : []
+    const idx = arr.indexOf(optionId)
+    if (idx >= 0) {
+      arr.splice(idx, 1)
+    } else {
+      arr.push(optionId)
+    }
+    userAnswers.value[paperQuestionId] = arr
+  } else {
+    userAnswers.value[paperQuestionId] = optionId
+  }
+}
+
+// 检查答案是否正确
+function checkAnswer(paperQuestionId: string, optionId: string) {
+  const pq = previewPaperQuestions.value.find(p => p.id === paperQuestionId)
+  if (!pq) return false
+  const correctOptions = pq.question.options?.filter((o: any) => o.isCorrect).map((o: any) => o.id) || []
+  return correctOptions.includes(optionId)
+}
+
+// 检查是否选错了（用户选了但不是正确答案）
+function isSelectedButWrong(paperQuestionId: string, optionId: string) {
+  return isOptionSelected(paperQuestionId, optionId) && !checkAnswer(paperQuestionId, optionId)
+}
+
+// 获取单题结果样式
+function getResultClass(paperQuestionId: string) {
+  return userAnswers.value[paperQuestionId] ? 'result-correct' : 'result-wrong'
+}
+
+// 获取单题结果图标
+function getResultIcon(paperQuestionId: string) {
+  return userAnswers.value[paperQuestionId] ? CircleCheckFilled : CircleCloseFilled
+}
+
+// 获取单题结果文字
+function getResultText(paperQuestionId: string, type: string) {
+  const pq = previewPaperQuestions.value.find(p => p.id === paperQuestionId)
+  if (!pq) return ''
+
+  const userAns = userAnswers.value[paperQuestionId]
+  if (!userAns) return '未作答'
+
+  // 填空题
+  if (type === 'FILL') {
+    const correctAns = pq.question.options?.[0]?.content || ''
+    if (typeof userAns === 'string' && userAns.trim() === correctAns) {
+      return `正确！你的答案：${userAns}`
+    }
+    return `错误！正确答案：${correctAns}，你的答案：${userAns}`
+  }
+
+  // 客观题
+  const correctOptions = pq.question.options?.filter((o: any) => o.isCorrect).map((o: any) => o.label) || []
+  const userLabels = (Array.isArray(userAns) ? userAns : [userAns]).map((id: string) => {
+    const opt = pq.question.options?.find((o: any) => o.id === id)
+    return opt?.label || ''
+  })
+
+  const isCorrect = JSON.stringify(correctOptions.sort()) === JSON.stringify(userLabels.sort())
+  if (isCorrect) {
+    return `正确！${type === 'MULTIPLE' ? '多选' : '单选'}答案：${correctOptions.join('')}`
+  }
+  return `错误！正确答案：${correctOptions.join('')}，你的答案：${userLabels.join('')}`
+}
+
 onMounted(load)
 </script>
 
@@ -331,5 +711,225 @@ onMounted(load)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 试卷预览样式 */
+.preview-header { margin-bottom: 16px; }
+.preview-info {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 14px;
+}
+.info-label {
+  color: #606266;
+  font-weight: 500;
+}
+.preview-body {
+  max-height: 600px;
+  overflow-y: auto;
+  padding: 8px;
+}
+.preview-question {
+  padding: 16px;
+  margin-bottom: 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  background: #fff;
+}
+.preview-question:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.question-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.question-index {
+  font-weight: bold;
+  color: #303133;
+  font-size: 16px;
+}
+.question-score {
+  margin-left: auto;
+  color: #67c23a;
+  font-weight: 500;
+}
+.question-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #303133;
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+.question-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.option-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.option-item:hover {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+.option-item.is-selected {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+.option-item.is-correct {
+  border-color: #67c23a;
+  background: #f0f9eb;
+}
+.option-item.is-wrong {
+  border-color: #f56c6c;
+  background: #fef0f0;
+}
+.option-label {
+  font-weight: bold;
+  color: #303133;
+  min-width: 24px;
+}
+.option-content {
+  flex: 1;
+  font-size: 14px;
+  color: #606266;
+}
+.correct-icon {
+  color: #67c23a;
+  font-size: 20px;
+}
+.wrong-icon {
+  color: #f56c6c;
+  font-size: 20px;
+}
+.question-fill {
+  margin-top: 12px;
+}
+.question-result {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.result-correct {
+  background: #f0f9eb;
+  color: #67c23a;
+  border: 1px solid #e1f3d8;
+}
+.result-wrong {
+  background: #fef0f0;
+  color: #f56c6c;
+  border: 1px solid #fde2e2;
+}
+.preview-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* 媒体附件样式 */
+.question-media {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+.media-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.media-tabs .el-tag {
+  cursor: pointer;
+  padding: 4px 10px;
+}
+.media-content {
+  width: 100%;
+}
+.media-image {
+  width: 100%;
+}
+.media-image .el-image {
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+}
+.media-image .image-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #f56c6c;
+  font-size: 13px;
+}
+.image-error .error-url {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #909399;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.media-video {
+  width: 100%;
+}
+.media-video video {
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+}
+.media-audio {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+.media-audio audio {
+  width: 100%;
+  max-width: 400px;
+  border-radius: 4px;
+}
+.media-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 400px;
+}
+.media-file-name {
+  flex: 1;
+  font-size: 13px;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.media-caption {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
+  text-align: center;
 }
 </style>

@@ -168,6 +168,7 @@ model Question {
   tenant          Tenant            @relation(fields: [tenantId], references: [id])
   category        QuestionCategory? @relation(fields: [categoryId], references: [id])
   options         QuestionOption[]
+  mediaItems      QuestionMedia[]
   paperQuestions  PaperQuestion[]
   examAnswers     ExamAnswer[]
 
@@ -188,6 +189,24 @@ model QuestionOption {
 
   @@index([questionId])
   @@map("question_options")
+}
+
+// 题目媒体资源（图片/视频/音频）
+model QuestionMedia {
+  id         String   @id @default(cuid())
+  questionId String
+  type       String   @db.VarChar(20)    // image / video / audio / file
+  url        String   @db.VarChar(500)   // OSS 存储地址
+  caption    String?  @db.Text            // 媒体说明
+  sortOrder  Int      @default(0)
+  fileSize   Int?     @default(0)         // 文件大小（字节）
+  duration   Int?     @default(0)         // 视频/音频时长（秒）
+  createdAt  DateTime @default(now())
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+  @@map("question_media")
 }
 
 // ─── 试卷与考试（Sprint 4-6）─────────────────────────

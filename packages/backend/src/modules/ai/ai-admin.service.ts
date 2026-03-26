@@ -541,36 +541,90 @@ export class AiAdminService {
       models.map(async (model) => {
         const startTime = Date.now()
         try {
-          const response = await fetch(model.provider.baseUrl + '/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${model.provider.apiKey}`,
-            },
-            body: JSON.stringify({
+          // 根据模型类型使用不同的检测接口
+          if (model.type === 'image') {
+            // 图片模型：使用图片生成接口检测
+            // 火山引擎豆包图片生成专用端点
+            const endpoint = `https://ark.cn-beijing.volces.com/api/v3/images/generations`
+            console.log(`[图片模型检测] 模型名称：${model.name}`)
+            console.log(`[图片模型检测] 数据库 modelId: ${model.modelId}`)
+            console.log(`[图片模型检测] 服务商 baseUrl: ${model.provider.baseUrl}`)
+            console.log(`[图片模型检测] 使用端点：${endpoint}`)
+
+            const requestBody = {
               model: model.modelId,
-              messages: [{ role: 'user', content: 'Hello' }],
-              max_tokens: 10,
-            }),
-          })
+              prompt: '一朵红色的玫瑰花，背景简洁，高清写实',
+              size: '2048x2048',  // 最小 3686400 像素，2048x2048=4194304 ✅
+              response_format: 'url',
+              stream: false,
+              watermark: false,
+            }
+            console.log(`[图片模型检测] 请求体：${JSON.stringify(requestBody)}`)
 
-          const status = response.ok ? 'online' : 'offline'
-          await this.prisma.aiModel.update({
-            where: { id: model.id },
-            data: {
-              lastStatus: status,
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${model.provider.apiKey}`,
+              },
+              body: JSON.stringify(requestBody),
+            })
+
+            const responseBody = await response.text()
+            console.log(`[图片模型检测] 状态：${response.status}`)
+            console.log(`[图片模型检测] 响应：${responseBody}`)
+
+            const status = response.ok ? 'online' : 'offline'
+            await this.prisma.aiModel.update({
+              where: { id: model.id },
+              data: {
+                lastStatus: status,
+                lastCheckedAt: new Date(),
+                lastError: response.ok ? null : responseBody,
+              },
+            })
+
+            return {
+              id: model.id,
+              name: model.name,
+              status,
               lastCheckedAt: new Date(),
-              lastError: response.ok ? null : await response.text(),
-            },
-          })
+            }
+          } else {
+            // 聊天模型：使用聊天接口检测
+            const response = await fetch(model.provider.baseUrl + '/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${model.provider.apiKey}`,
+              },
+              body: JSON.stringify({
+                model: model.modelId,
+                messages: [{ role: 'user', content: 'Hello' }],
+                max_tokens: 10,
+              }),
+            })
 
-          return {
-            id: model.id,
-            name: model.name,
-            status,
-            lastCheckedAt: new Date(),
+            const status = response.ok ? 'online' : 'offline'
+            await this.prisma.aiModel.update({
+              where: { id: model.id },
+              data: {
+                lastStatus: status,
+                lastCheckedAt: new Date(),
+                lastError: response.ok ? null : await response.text(),
+              },
+            })
+
+            return {
+              id: model.id,
+              name: model.name,
+              status,
+              lastCheckedAt: new Date(),
+            }
           }
         } catch (error: any) {
+          console.error(`[模型检测错误] 模型：${model.name}`, error)
+
           await this.prisma.aiModel.update({
             where: { id: model.id },
             data: {
@@ -757,7 +811,7 @@ export class AiAdminService {
    */
   async generateImage(dto: GenerateImageDto & {
     model?: string;
-    seed?: number;
+    seed?: number | null;
     negativePrompt?: string;
     referenceImageUrl?: string;
   }) {
@@ -778,15 +832,26 @@ export class AiAdminService {
     const endpoint = provider.imageEndpoint || `${provider.baseUrl}/images/generations`
 
     try {
+      // 尺寸映射：火山引擎 Seedream 要求最小 3686400 像素 (1536x2400 或 2048x2048)
+      // 参考尺寸：1024x1024=1048576(太小❌), 2048x2048=4194304(✅)
+      const sizeMap: Record<string, string> = {
+        '2K': '2048x2048',       // 4194304 像素 ✅
+        '4K': '4096x4096',       // 16777216 像素 ✅
+        '1024x1024': '2048x2048',  // 1024 太小，自动升级到 2048 ✅
+        '768x768': '2048x2048',    // 768 太小，自动升级到 2048 ✅
+        '1024x1792': '1536x2688',  // 1835008 太小，升级 ✅
+        '1792x1024': '2688x1536',  // 1835008 太小，升级 ✅
+      }
+      const size = sizeMap[dto.size || '1024x1024'] || '2048x2048'
+
       // 构建请求体（符合火山引擎豆包 API 格式）
       const requestBody: any = {
-        model: dto.model || 'doubao-seedream-5-0-260128', // 必须使用正确的模型 ID
+        model: dto.model || 'ep-20260313201916-mnktm',
         prompt: dto.prompt,
-        size: dto.size || '1024_1024', // 火山引擎尺寸格式：1024_1024, 2K, 4K 等
-        sequential_image_generation: dto.n && dto.n > 1 ? 'enabled' : 'disabled',
+        size: size,
         response_format: 'url',
         stream: false,
-        watermark: true,
+        watermark: dto.watermark ?? true,
       }
 
       // 添加可选参数
@@ -802,34 +867,45 @@ export class AiAdminService {
         requestBody.reference_image_url = dto.referenceImageUrl
       }
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${provider.apiKey}`,
-        },
-        body: JSON.stringify(requestBody),
-      })
+      console.log('[图片生成] 请求:', JSON.stringify(requestBody))
+
+      // 生图接口需要较长时间，设置 60 秒超时
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 90000)  // 90 秒超时
+
+      let response
+      try {
+        response = await fetch(endpoint, {
+          method: 'POST',
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${provider.apiKey}`,
+          },
+          body: JSON.stringify(requestBody),
+        })
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId)
+        throw fetchError
+      }
+
+      clearTimeout(timeoutId)
 
       const duration = Date.now() - startTime
 
       if (!response.ok) {
         const errorData = await response.text()
-        console.error('图片生成 API 错误:', {
+        console.error('[图片生成] API 错误:', {
           status: response.status,
           endpoint,
           requestBody: JSON.stringify(requestBody),
           error: errorData,
         })
-        return {
-          success: false,
-          error: `API 错误：${response.status} - ${errorData}`,
-          duration,
-        }
+        throw new BadRequestException(`API 错误：${response.status} - ${errorData}`)
       }
 
       const data = await response.json()
-      console.log('图片生成响应:', data)
+      console.log('[图片生成] 响应:', data)
 
       // 适配不同服务商的响应格式
       const images = data.data?.map((img: any) => ({
@@ -847,6 +923,15 @@ export class AiAdminService {
         cost,
       }
     } catch (error: any) {
+      // 判断是否是超时错误
+      if (error.name === 'AbortError') {
+        console.error('[图片生成] 请求超时（60 秒），生图可能需要更长时间')
+        return {
+          success: false,
+          error: '请求超时（60 秒），生图可能需要更长时间，请重试',
+          duration: Date.now() - startTime,
+        }
+      }
       console.error('图片生成异常:', error)
       return {
         success: false,

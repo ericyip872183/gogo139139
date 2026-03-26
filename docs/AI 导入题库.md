@@ -1,7 +1,8 @@
 # AI 导入题库功能设计方案
 
-> 文档版本：v1.0
+> 文档版本：v2.0
 > 创建时间：2026-03-24
+> 最后更新：2026-03-25
 > 状态：待开发
 
 ---
@@ -22,7 +23,7 @@
 
 通过 AI 能力实现**多格式题目智能识别 + 自动结构化录入**：
 
-1. **支持多种输入格式**：Word(.docx)、PDF、图片(JPG/PNG)
+1. **支持多种输入格式**：Word(.docx)、PDF、图片 (JPG/PNG)
 2. **自动题型识别**：单选题、多选题、判断题、填空题
 3. **自动结构化**：题目内容、选项 (A/B/C/D)、正确答案、解析
 4. **批量处理**：一次上传多个文件，批量识别后统一入库
@@ -41,17 +42,18 @@
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  文件预处理（格式转换）                                           │
-│  - Word (.docx) → 提取文本 → 分段                               │
-│  - PDF → 文本型：直接提取 / 扫描版：OCR 识别                       │
-│  - 图片 → OCR 识别 → 文本                                        │
+│  文件预处理（可选，豆包大模型支持直接上传文件）                     │
+│  - 小文件 (<10MB): 直接转 base64 发给豆包                          │
+│  - 大文件：上传临时存储，发 URL 给豆包                             │
+│  - 豆包大模型自动识别文件类型并解析                               │
 └─────────────────────┬───────────────────────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  AI 大模型智能解析（火山引擎豆包 API）                              │
-│  Prompt: "从以下文本中提取题目，返回 JSON 格式：{type, content,   │
-│  options[], answer, explanation}"                                │
+│  AI 大模型智能解析（火山引擎豆包大模型）                           │
+│  - 支持直接传入文件 URL 或 base64                                │
+│  - Prompt: "请分析这个文件，提取所有题目，返回 JSON 格式..."      │
+│  - 豆包自动处理 Word/PDF/图片，无需单独 OCR                       │
 └─────────────────────┬───────────────────────────────────────────┘
                       │
                       ▼
@@ -65,12 +67,9 @@
 
 | 层级 | 技术方案 | 说明 |
 |------|---------|------|
-| **文件解析** | `mammoth.js` (Word) | 提取.docx 文本内容 |
-| | `pdf-parse` (PDF 文本) | 提取文本型 PDF |
-| | `pdfjs-dist` (PDF 图片) | 扫描版 PDF 转图片后 OCR |
-| | 原生 Canvas (图片) | 图片预览 + 预处理 |
-| **OCR 识别** | 火山引擎 OCR API | 通用文字识别 + 表格识别 |
-| **AI 解析** | 火山引擎豆包大模型 | 题目结构化提取 |
+| **文件解析** | 火山引擎豆包大模型 | 直接上传文件，豆包自动解析（支持 Word/PDF/图片） |
+| **OCR 识别** | 豆包大模型内置 | 无需单独 OCR，豆包自动识别图片/PDF 中的文字 |
+| **AI 解析** | 火山引擎豆包大模型 | 题目结构化提取 + 文件内容理解 |
 | **后端** | NestJS + Prisma | 文件上传、任务队列、结果存储 |
 | **前端** | Vue3 + Element Plus | 上传界面、校对界面、进度展示 |
 
@@ -406,45 +405,72 @@ model AiImportItem {
 backend/src/modules/questions/
 ├── services/
 │   ├── ai-import.service.ts      # AI 导入核心服务
-│   ├── file-parser.service.ts    # 文件解析服务
+│   ├── file-upload.service.ts    # 文件上传服务
 │   ├── ai-parser.service.ts      # AI 大模型解析服务
 │   └── question-import.service.ts # 题目入库服务
 ├── controllers/
 │   └── ai-import.controller.ts
 └── dto/
-    └── ai-import.dto.ts
+│   └── ai-import.dto.ts
 ```
 
-### 6.2 文件解析服务 (`file-parser.service.ts`)
+### 6.2 文件上传服务 (`file-upload.service.ts`)
 
 ```typescript
 import { Injectable } from '@nestjs/common'
-import * as mammoth from 'mammoth'
-import * as pdfParse from 'pdf-parse'
+import { createWriteStream } from 'fs'
+import { join } from 'path'
+import { v4 as uuidv4 } from 'uuid'
 
 @Injectable()
-export class FileParserService {
+export class FileUploadService {
   /**
-   * 解析 Word (.docx)
+   * 上传文件到临时目录，返回文件路径
    */
-  async parseWord(buffer: Buffer): Promise<string> {
-    const result = await mammoth.extractRawText({ buffer })
-    return result.value
+  async uploadFile(buffer: Buffer, filename: string): Promise<string> {
+    const ext = filename.split('.').pop()
+    const newFilename = `${uuidv4()}.${ext}`
+    const uploadDir = join(process.cwd(), 'uploads', 'ai-import')
+    const filePath = join(uploadDir, newFilename)
+
+    // 确保目录存在
+    const fs = await import('fs/promises')
+    await fs.mkdir(uploadDir, { recursive: true })
+
+    // 写入文件
+    await new Promise<void>((resolve, reject) => {
+      const stream = createWriteStream(filePath)
+      stream.write(buffer)
+      stream.on('finish', () => resolve())
+      stream.on('error', (err) => reject(err))
+      stream.end()
+    })
+
+    return filePath
   }
 
   /**
-   * 解析 PDF（文本型）
+   * 文件转 base64（小文件直接传）
    */
-  async parsePdf(buffer: Buffer): Promise<string> {
-    const data = await pdfParse(buffer)
-    return data.text
-  }
-
-  /**
-   * 解析图片（返回 Base64，供 OCR 使用）
-   */
-  async parseImage(buffer: Buffer): Promise<string> {
+  async fileToBase64(filePath: string): Promise<string> {
+    const fs = await import('fs/promises')
+    const buffer = await fs.readFile(filePath)
     return buffer.toString('base64')
+  }
+
+  /**
+   * 获取文件 MIME 类型
+   */
+  getFileMimeType(filename: string): string {
+    const ext = filename.split('.').pop()?.toLowerCase()
+    const mimeTypes: Record<string, string> = {
+      'pdf': 'application/pdf',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+    }
+    return mimeTypes[ext || ''] || 'application/octet-stream'
   }
 }
 ```
@@ -454,6 +480,7 @@ export class FileParserService {
 ```typescript
 import { Injectable } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { FileUploadService } from './file-upload.service'
 
 interface ParsedQuestion {
   questionType: 'SINGLE' | 'MULTIPLE' | 'JUDGE' | 'FILL'
@@ -465,17 +492,36 @@ interface ParsedQuestion {
 
 @Injectable()
 export class AiParserService {
-  constructor(private config: ConfigService) {}
+  constructor(
+    private config: ConfigService,
+    private fileUpload: FileUploadService,
+  ) {}
 
   /**
-   * 调用火山引擎豆包大模型解析题目
+   * 调用火山引擎豆包大模型解析题目（支持文件上传）
+   * 豆包 1.5 Pro 支持直接解析文件：https://www.volcengine.com/docs/82379/1399008
    */
-  async parseQuestions(text: string): Promise<ParsedQuestion[]> {
+  async parseQuestions(filePath: string): Promise<ParsedQuestion[]> {
     const apiKey = this.config.get('VOLCENGINE_AI_KEY')
-    const endpoint = this.config.get('VOLCENGINE_AI_ENDPOINT')
+    const endpoint = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
 
-    const prompt = `
-你是一名专业的题目结构化助手。请从以下文本中提取所有题目，并以 JSON 数组格式返回。
+    // 获取文件信息
+    const filename = filePath.split('/').pop() || 'file'
+    const mimeType = this.fileUpload.getFileMimeType(filename)
+    const base64Data = await this.fileUpload.fileToBase64(filePath)
+    const dataUrl = `data:${mimeType};base64,${base64Data}`
+
+    const messages: any[] = [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'file_url',
+            file_url: { url: dataUrl }
+          },
+          {
+            type: 'text',
+            text: `你是一名专业的题目结构化助手。请分析这个文件，提取所有题目，并以 JSON 数组格式返回。
 
 每道题目的格式：
 {
@@ -492,17 +538,16 @@ export class AiParserService {
 要求：
 1. 准确识别题型（单选/多选/判断/填空）
 2. 选择题的选项只包含 label 和 content，isCorrect 根据答案自动判断
-3. 判断题的选项固定为 A.正确 B.错误
+3. 判断题的选项固定为 A.正确 B.错误，答案根据勾选判断
 4. 填空题如果没有明确答案，标记 answer 为 "UNKNOWN"
 5. 如果无法识别为题目，跳过该段落
+6. 直接返回 JSON 数组，不要包含任何其他说明文字
 
-以下是需要解析的文本：
----
-${text}
----
-
-请直接返回 JSON 数组，不要包含任何其他说明文字。
-`
+请开始分析文件并提取题目：`
+          }
+        ]
+      }
+    ]
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -511,13 +556,19 @@ ${text}
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'doubao-pro-32k',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,  // 低温度，确保输出稳定
+        model: 'doubao-pro-32k',  // 或 doubao-1.5-pro，支持文件解析
+        messages,
+        temperature: 0.1,
+        max_tokens: 32000,
       }),
     })
 
     const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(`AI 解析失败：${data.error?.message || '未知错误'}`)
+    }
+
     const jsonText = data.choices[0].message.content.trim()
 
     // 移除可能的 markdown 代码块标记
@@ -533,14 +584,14 @@ ${text}
 ```typescript
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
-import { FileParserService } from './file-parser.service'
+import { FileUploadService } from './file-upload.service'
 import { AiParserService } from './ai-parser.service'
 
 @Injectable()
 export class AiImportService {
   constructor(
     private prisma: PrismaService,
-    private fileParser: FileParserService,
+    private fileUpload: FileUploadService,
     private aiParser: AiParserService,
   ) {}
 
@@ -583,20 +634,11 @@ export class AiImportService {
 
     for (const file of files) {
       try {
-        // 1. 文件解析
-        let text: string
-        if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-          text = await this.fileParser.parseWord(file.buffer)
-        } else if (file.type === 'application/pdf') {
-          text = await this.fileParser.parsePdf(file.buffer)
-        } else if (file.type.startsWith('image/')) {
-          // 图片需要 OCR（调用火山 OCR API）
-          text = await this.fileParser.parseImage(file.buffer)
-          text = await this.ocrService.recognize(text)
-        }
+        // 1. 文件上传到临时目录
+        const filePath = await this.fileUpload.uploadFile(file.buffer, file.name)
 
-        // 2. AI 解析
-        const questions = await this.aiParser.parseQuestions(text)
+        // 2. AI 解析（豆包直接处理文件，无需本地解析）
+        const questions = await this.aiParser.parseQuestions(filePath)
         allQuestions.push(...questions)
 
         // 3. 保存为待校对项
@@ -764,10 +806,10 @@ export class AiImportService {
 
 ### Phase 1: 数据库与服务层（3 天）
 - [ ] 数据库表：`AiImportTask`, `AiImportItem`
-- [ ] `FileParserService`: Word/PDF/图片解析
-- [ ] `AiParserService`: AI 大模型解析
+- [ ] `FileUploadService`: 文件上传/转 base64
+- [ ] `AiParserService`: AI 大模型解析（豆包文件上传）
 - [ ] `AiImportService`: 导入任务管理
-- [ ] 火山引擎 API 配置（OCR + 豆包大模型）
+- [ ] 火山引擎 API 配置（豆包大模型）
 
 ### Phase 2: 接口层（2 天）
 - [ ] `AiImportController`: 上传/查询/确认接口

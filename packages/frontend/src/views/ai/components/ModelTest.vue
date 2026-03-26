@@ -30,8 +30,10 @@
             >
               <span>{{ m.name }}</span>
               <span v-if="m.type === 'image'" style="margin-left: 8px;" class="model-badge">🎨</span>
-              <span v-if="m.lastStatus === 'online'" style="margin-left: 8px; color: #67c23a;">●</span>
-              <span v-else-if="m.lastStatus === 'offline'" style="margin-left: 8px; color: #f56c6c;">●</span>
+              <span v-if="m.lastStatus === 'online'" style="margin-left: 8px; color: #67c23a;" title="在线">●</span>
+              <span v-else-if="m.lastStatus === 'error'" style="margin-left: 8px; color: #e6a23c;" :title="m.lastError">●</span>
+              <span v-else-if="m.lastStatus === 'offline'" style="margin-left: 8px; color: #f56c6c;" :title="m.lastError">●</span>
+              <span v-else-if="!m.lastStatus" style="margin-left: 8px; color: #909399;" title="未检测">●</span>
             </el-option>
           </el-select>
         </el-form-item>
@@ -111,12 +113,11 @@
                     <el-col :span="8">
                       <el-form-item label="📐 分辨率">
                         <el-select v-model="imageConfig.size" placeholder="选择尺寸" style="width: 100%">
-                          <el-option label="方图 1024×1024" value="1024_1024" />
-                          <el-option label="小方图 768×768" value="768_768" />
-                          <el-option label="2K 高清" value="2K" />
-                          <el-option label="4K 超高清" value="4K" />
-                          <el-option label="竖版 1024×1792" value="1024_1792" />
-                          <el-option label="横版 1792×1024" value="1792_1024" />
+                          <el-option label="标准方图 2048×2048（推荐）" value="1024_1024" />
+                          <el-option label="2K 高清 2048×2048" value="2K" />
+                          <el-option label="4K 超清 4096×4096" value="4K" />
+                          <el-option label="竖版 1536×2688" value="1024_1792" />
+                          <el-option label="横版 2688×1536" value="1792_1024" />
                         </el-select>
                       </el-form-item>
                     </el-col>
@@ -475,7 +476,7 @@ const handleImageGeneration = async (modelId: string, aiMessageIndex: number, pr
       providerId: selectedProviderId.value,
       model: model?.modelId,
       prompt: finalPrompt,
-      size: imageConfig.size,
+      size: imageConfig.size.replace('_', 'x'),  // 下划线转小写 x
       style: imageConfig.style,
       n: imageConfig.n,
       watermark: imageConfig.watermark,
@@ -491,6 +492,9 @@ const handleImageGeneration = async (modelId: string, aiMessageIndex: number, pr
     if (imageConfig.referenceImageUrl && imageConfig.referenceImageUrl.trim()) {
       params.referenceImageUrl = imageConfig.referenceImageUrl
     }
+
+    // 打印完整请求参数（方便调试）
+    console.log('[生图请求参数]', JSON.stringify(params, null, 2))
 
     const result = await aiAdminApi.generateImage(params)
 
@@ -627,7 +631,7 @@ const handleDownloadImage = (img: { url: string }) => {
 
 // 批量检测所有模型
 const checkAllModels = async () => {
-  const loading = ElMessageBox.alert('正在检测所有模型状态，请稍候...', '检测中', {
+  const loadingMsg = ElMessageBox.alert('正在检测所有模型状态，请稍候...', '检测中', {
     closeOnClickModal: false,
     showClose: false,
   })
@@ -635,10 +639,13 @@ const checkAllModels = async () => {
     await aiAdminApi.checkAllModels()
     await loadModels()
     ElMessage.success('模型状态检测完成')
-    loading.close()
   } catch (e: any) {
     ElMessage.error(e.message || '检测失败')
-    loading.close()
+  } finally {
+    // 关闭提示框
+    try {
+      await loadingMsg.close()
+    } catch {}
   }
 }
 

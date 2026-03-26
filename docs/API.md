@@ -85,16 +85,95 @@
 
 ## 题库 `/api/questions`
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/questions` | 题目列表（分页+搜索） |
-| POST | `/questions` | 新增题目 |
-| PATCH | `/questions/:id` | 编辑题目 |
-| DELETE | `/questions/:id` | 删除题目 |
-| POST | `/questions/import` | 批量导入 |
-| POST | `/questions/batch-delete` | 批量删除 |
-| GET | `/question-categories/tree` | 分类树 |
-| POST | `/question-categories` | 新增分类 |
+### 题目分类
+
+| 方法 | 路径 | 角色 | 说明 |
+|------|------|------|------|
+| GET | `/questions/categories/tree` | TEACHER+ | 获取分类树 |
+| GET | `/questions/categories/list` | TEACHER+ | 获取分类列表（平铺） |
+| POST | `/questions/categories` | TEACHER+ | 新增分类 |
+| PATCH | `/questions/categories/:id` | TEACHER+ | 编辑分类 |
+| DELETE | `/questions/categories/:id` | TEACHER+ | 删除分类 |
+
+### 题目管理
+
+| 方法 | 路径 | 角色 | 说明 |
+|------|------|------|------|
+| GET | `/questions` | TEACHER+ | 题目列表（分页+搜索） |
+| GET | `/questions/:id` | TEACHER+ | 题目详情（含媒体资源） |
+| POST | `/questions` | TEACHER+ | 新增题目（支持富文本 + 媒体） |
+| PATCH | `/questions/:id` | TEACHER+ | 编辑题目（支持媒体更新） |
+| DELETE | `/questions/:id` | TEACHER+ | 删除题目（软删除） |
+| DELETE | `/questions/batch` | TEACHER+ | 批量删除题目 |
+| POST | `/questions/import` | TEACHER+ | 批量导入（JSON） |
+| POST | `/questions/import-excel` | TEACHER+ | 批量导入（Excel） |
+| GET | `/questions/export` | TEACHER+ | 批量导出（Excel） |
+
+### 题目媒体资源
+
+| 方法 | 路径 | 角色 | 说明 |
+|------|------|------|------|
+| POST | `/questions/:id/media` | TEACHER+ | 上传题目媒体文件（图片/视频/音频） |
+| GET | `/questions/media/:id` | TEACHER+ | 获取媒体资源详情 |
+| DELETE | `/questions/media/:id` | TEACHER+ | 删除媒体资源 |
+
+### 题目数据结构
+
+```json
+{
+  "id": "...",
+  "type": "SINGLE",  // SINGLE | MULTIPLE | JUDGE | FILL
+  "content": "<p>富文本内容，支持 HTML 标签</p>",
+  "difficulty": "MEDIUM",  // EASY | MEDIUM | HARD
+  "score": 2,
+  "explanation": "题目解析",
+  "categoryId": "...",
+  "category": { "id": "...", "name": "分类名" },
+  "options": [
+    { "label": "A", "content": "选项内容", "isCorrect": true, "sortOrder": 0 }
+  ],
+  "mediaItems": [
+    {
+      "id": "...",
+      "type": "image",  // image | video | audio | file
+      "url": "/uploads/questions/{tenantId}/{filename}",
+      "caption": "说明文字",
+      "sortOrder": 0,
+      "fileSize": 102400,
+      "duration": 0
+    }
+  ],
+  "isActive": true,
+  "createdAt": "2026-03-25T10:00:00.000Z"
+}
+```
+
+### POST /questions 请求示例
+
+```json
+{
+  "type": "SINGLE",
+  "content": "<p>以下哪项属于八纲辨证？</p><p><img src=\"data:image/png;base64,...\"/></p>",
+  "difficulty": "MEDIUM",
+  "score": 2,
+  "categoryId": "...",
+  "explanation": "八纲包括阴阳表里寒热虚实",
+  "options": [
+    { "label": "A", "content": "阴阳表里", "isCorrect": true },
+    { "label": "B", "content": "气血津液", "isCorrect": false },
+    { "label": "C", "content": "五行生克", "isCorrect": false },
+    { "label": "D", "content": "脏腑经络", "isCorrect": false }
+  ],
+  "mediaItems": [
+    {
+      "type": "image",
+      "url": "/uploads/questions/xxx/xxx.png",
+      "caption": "题目配图",
+      "sortOrder": 0
+    }
+  ]
+}
+```
 
 ---
 

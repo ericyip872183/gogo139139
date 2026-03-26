@@ -85,6 +85,12 @@ export class CreateQuestionDto {
   @Type(() => QuestionOptionDto)
   @ArrayMinSize(0)
   options: QuestionOptionDto[]
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => QuestionMediaDto)
+  @IsOptional()
+  mediaItems?: QuestionMediaDto[]
 }
 
 export class UpdateQuestionDto {
@@ -181,4 +187,49 @@ export class ImportQuestionDto {
 
   // 填空题答案
   fillAnswer?: string
+}
+
+// ─── 题目媒体资源 DTO ─────────────────────────────────
+
+export class QuestionMediaDto {
+  @IsString()
+  @IsNotEmpty()
+  type: string  // image / video / audio / file
+
+  @IsString()
+  @IsNotEmpty()
+  url: string
+
+  @IsString()
+  @IsOptional()
+  caption?: string
+
+  @IsNumber()
+  @IsOptional()
+  sortOrder?: number
+
+  @IsNumber()
+  @IsOptional()
+  fileSize?: number
+
+  @IsNumber()
+  @IsOptional()
+  duration?: number
+}
+
+// 更新 CreateQuestionDto 和 UpdateQuestionDto 以支持媒体资源
+export class CreateQuestionWithMediaDto extends CreateQuestionDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => QuestionMediaDto)
+  @IsOptional()
+  mediaItems?: QuestionMediaDto[]
+}
+
+export class UpdateQuestionWithMediaDto extends UpdateQuestionDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => QuestionMediaDto)
+  @IsOptional()
+  mediaItems?: QuestionMediaDto[]
 }

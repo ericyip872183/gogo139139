@@ -34,7 +34,10 @@ export class PapersService {
           orderBy: { sortOrder: 'asc' },
           include: {
             question: {
-              include: { options: { orderBy: { sortOrder: 'asc' } } },
+              include: {
+                options: { orderBy: { sortOrder: 'asc' } },
+                mediaItems: { orderBy: { sortOrder: 'asc' } },
+              },
             },
           },
         },

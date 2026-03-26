@@ -76,7 +76,15 @@
         <el-table-column type="selection" width="50" />
         <el-table-column label="题目内容" min-width="260" show-overflow-tooltip>
           <template #default="{ row }">
-            <span v-html="row.content" class="question-content" />
+            <div class="question-content-wrapper">
+              <span v-html="row.content" class="question-content" />
+              <div v-if="row.mediaItems?.length" class="question-media-preview">
+                <el-tag v-for="media in row.mediaItems" :key="media.id" size="small" :type="getMediaTypeTag(media.type)">
+                  <el-icon style="margin-right: 4px"><component :is="getMediaIcon(media.type)" /></el-icon>
+                  {{ media.caption || media.type }}
+                </el-tag>
+              </div>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="题型" width="90">
@@ -132,8 +140,8 @@
     <el-dialog
       v-model="questionDialogVisible"
       :title="editId ? '编辑题目' : '新增题目'"
-      width="720px"
-      @close="resetQuestionForm"
+      width="900px"
+      @close="handleDialogClose"
     >
       <el-form ref="qFormRef" :model="qForm" :rules="qRules" label-width="80px">
         <el-row :gutter="16">
@@ -168,7 +176,147 @@
           </el-select>
         </el-form-item>
         <el-form-item label="题目内容" prop="content">
-          <el-input v-model="qForm.content" type="textarea" :rows="3" placeholder="支持 HTML 内容" />
+          <!-- 原生文本框 - 简洁高效 -->
+          <el-input
+            v-model="qForm.content"
+            type="textarea"
+            :rows="6"
+            placeholder="请输入题目内容（支持纯文本）"
+          />
+          <!--
+          ─── 旧版富文本编辑器代码（已禁用，需要时可恢复）────────────────────────
+          <div class="editor-container">
+            <Editor
+              v-if="questionDialogVisible"
+              :key="editorKey"
+              v-model="qForm.content"
+              :init="editorInit"
+              :disabled="false"
+              tag="textarea"
+            />
+          </div>
+          -->
+        </el-form-item>
+
+        <!-- 媒体资源管理 -->
+        <el-form-item label="媒体资源">
+          <!-- 上传区域 -->
+          <div class="media-uploader">
+            <el-upload
+              ref="uploadRef"
+              drag
+              :http-request="handleMediaUpload"
+              :before-upload="beforeMediaUpload"
+              :on-change="handleFileChange"
+              :show-file-list="false"
+              accept="image/*,video/*,audio/*"
+              :auto-upload="false"
+              multiple
+            >
+              <el-icon class="el-icon--upload"><Upload-Filled /></el-icon>
+              <div class="el-upload__text">
+                拖拽文件到此处或<em>点击上传</em>
+              </div>
+              <template #tip>
+                <div class="el-upload__tip">
+                  支持图片、视频、音频文件，单个文件最大 50MB
+                </div>
+              </template>
+            </el-upload>
+          </div>
+
+          <!-- 待上传文件列表 -->
+          <div v-if="pendingMediaFiles.length" class="media-list pending-list">
+            <div class="media-list-header">
+              <span>待上传 {{ pendingMediaFiles.length }} 个文件（保存题目后上传到服务器）</span>
+            </div>
+            <div
+              v-for="(file, idx) in pendingMediaFiles"
+              :key="file.uid || idx"
+              class="media-item"
+            >
+              <div class="media-preview">
+                <!-- 图片预览 -->
+                <img v-if="file.type.startsWith('image/')" :src="file.previewUrl" class="media-thumb" />
+                <!-- 视频预览 -->
+                <video v-else-if="file.type.startsWith('video/')" :src="file.previewUrl" class="media-thumb" />
+                <!-- 音频预览 -->
+                <audio v-else-if="file.type.startsWith('audio/')" :src="file.previewUrl" controls class="media-thumb-audio" />
+                <!-- 文件图标 -->
+                <div v-else class="media-file-icon">
+                  <el-icon :size="48"><Document /></el-icon>
+                </div>
+              </div>
+              <div class="media-info">
+                <div class="media-name">{{ file.name }}</div>
+                <div class="media-meta">
+                  <el-tag size="small" :type="getFileTagType(file.type)">
+                    {{ getFileTypeName(file.type) }}
+                  </el-tag>
+                  <span>{{ formatFileSize(file.size) }}</span>
+                </div>
+                <el-input
+                  v-model="file.caption"
+                  placeholder="说明文字（可选）"
+                  size="small"
+                />
+              </div>
+              <el-button
+                link
+                type="danger"
+                :icon="Delete"
+                circle
+                @click="removePendingFile(file)"
+              />
+            </div>
+          </div>
+
+          <!-- 已上传文件列表（从服务器加载的） -->
+          <div v-if="mediaItems.length" class="media-list uploaded-list">
+            <div class="media-list-header">
+              <span>已上传 {{ mediaItems.length }} 个文件</span>
+            </div>
+            <div
+              v-for="(media, idx) in mediaItems"
+              :key="media.id || idx"
+              class="media-item"
+            >
+              <div class="media-preview">
+                <!-- 图片预览 -->
+                <img v-if="media.type === 'image'" :src="media.url" class="media-thumb" />
+                <!-- 视频预览 -->
+                <video v-else-if="media.type === 'video'" :src="media.url" class="media-thumb" />
+                <!-- 音频预览 -->
+                <audio v-else-if="media.type === 'audio'" :src="media.url" controls class="media-thumb-audio" />
+                <!-- 文件图标 -->
+                <div v-else class="media-file-icon">
+                  <el-icon :size="48"><Document /></el-icon>
+                </div>
+              </div>
+              <div class="media-info">
+                <div class="media-name">{{ media.caption || media.originalName || media.url.split('/').pop() }}</div>
+                <div class="media-meta">
+                  <el-tag size="small" :type="getMediaTypeTag(media.type)">
+                    {{ media.type === 'image' ? '图片' : media.type === 'video' ? '视频' : media.type === 'audio' ? '音频' : '文件' }}
+                  </el-tag>
+                  <span v-if="media.fileSize">{{ formatFileSize(media.fileSize) }}</span>
+                </div>
+                <el-input
+                  v-model="media.caption"
+                  placeholder="说明文字（可选）"
+                  size="small"
+                  @change="updateMediaCaption(media)"
+                />
+              </div>
+              <el-button
+                link
+                type="danger"
+                :icon="Delete"
+                circle
+                @click="removeMediaItem(media)"
+              />
+            </div>
+          </div>
         </el-form-item>
 
         <!-- 选项区域（单选/多选/判断） -->
@@ -267,8 +415,39 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Edit, Delete, Search, Upload, Select } from '@element-plus/icons-vue'
-import { questionsApi, type Question, type QuestionCategory } from '@/api/questions'
+import { Plus, Edit, Delete, Search, Upload, Download, Select, UploadFilled, Document, VideoPlay, VideoCamera, Headset } from '@element-plus/icons-vue'
+import { questionsApi, type Question, type QuestionCategory, type QuestionMedia } from '@/api/questions'
+
+// 富文本编辑器导入（已禁用，代码保留以备恢复）
+// import Editor from '@tinymce/tinymce-vue'
+// import 'tinymce/tinymce'
+// import 'tinymce/icons/default'
+// import 'tinymce/themes/silver'
+// import 'tinymce/models/dom'
+// import 'tinymce/plugins/advlist'
+// import 'tinymce/plugins/autolink'
+// import 'tinymce/plugins/lists'
+// import 'tinymce/plugins/link'
+// import 'tinymce/plugins/image'
+// import 'tinymce/plugins/charmap'
+// import 'tinymce/plugins/preview'
+// import 'tinymce/plugins/anchor'
+// import 'tinymce/plugins/searchreplace'
+// import 'tinymce/plugins/visualblocks'
+// import 'tinymce/plugins/code'
+// import 'tinymce/plugins/fullscreen'
+// import 'tinymce/plugins/insertdatetime'
+// import 'tinymce/plugins/media'
+// import 'tinymce/plugins/table'
+// import 'tinymce/plugins/wordcount'
+// import 'tinymce/skins/content/default/content.css'
+// import 'tinymce/skins/ui/oxide/skin.css'
+// import 'tinymce/skins/ui/oxide/skin.min.css'
+
+// ─── 富文本编辑器配置（已禁用，代码保留以备恢复）──────────────────────────
+// const editorRef = shallowRef()
+// const editorKey = ref(0)
+// const editorInit = { ... }
 
 // ─── 分类 ─────────────────────────────────────────────
 const catLoading = ref(false)
@@ -382,6 +561,25 @@ const diffLabel = (d: string) => diffMap[d] ?? d
 const typeTagType = (t: string) => typeTagMap[t] as any ?? ''
 const diffTagType = (d: string) => diffTagMap[d] as any ?? ''
 
+// 媒体类型标签和图标
+const getMediaTypeTag = (type: string) => {
+  const map: Record<string, string> = { image: 'success', video: 'warning', audio: 'info', file: '' }
+  return map[type] || ''
+}
+
+const getMediaIcon = (type: string) => {
+  if (type === 'image') return 'Picture'
+  if (type === 'video') return 'VideoCamera'
+  if (type === 'audio') return 'Headset'
+  return 'Document'
+}
+
+const formatFileSize = (bytes: number) => {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
 async function loadQuestions() {
   loading.value = true
   try {
@@ -484,6 +682,135 @@ watch(() => qForm.type, (t) => {
   }
 })
 
+// ─── 媒体资源管理 ──────────────────────────────────────────
+const uploadRef = ref()
+
+// 待上传文件（本地临时存储，题目保存后才上传到服务器）
+interface PendingMediaFile extends File {
+  uid: string | number
+  caption: string
+  previewUrl?: string
+}
+const pendingMediaFiles = ref<PendingMediaFile[]>([])
+
+// 已上传文件（从服务器加载的）
+const mediaItems = ref<QuestionMedia[]>([])
+
+// 文件类型映射
+const getFileTypeName = (type: string) => {
+  if (type.startsWith('image/')) return '图片'
+  if (type.startsWith('video/')) return '视频'
+  if (type.startsWith('audio/')) return '音频'
+  return '文件'
+}
+
+const getFileTagType = (type: string) => {
+  if (type.startsWith('image/')) return 'success'
+  if (type.startsWith('video/')) return 'warning'
+  if (type.startsWith('audio/')) return 'info'
+  return ''
+}
+
+// 文件改变时直接处理（不等待上传）
+function handleFileChange(uploadFile: any) {
+  console.log('[媒体上传] handleFileChange 被调用', uploadFile)
+  const rawFile = uploadFile.raw as File
+  if (!rawFile) {
+    console.log('[媒体上传] 没有文件')
+    return
+  }
+
+  console.log('[媒体上传] 选择文件:', {
+    name: rawFile.name,
+    size: rawFile.size,
+    type: rawFile.type
+  })
+
+  // 检查文件大小（50MB 限制）
+  if (rawFile.size > 50 * 1024 * 1024) {
+    ElMessage.error('文件大小不能超过 50MB')
+    if (uploadRef.value) {
+      uploadRef.value.clearFiles()
+    }
+    return
+  }
+
+  // 生成唯一 ID
+  const uid = Date.now() + Math.random()
+
+  // 创建预览 URL
+  const previewUrl = URL.createObjectURL(rawFile)
+
+  // 添加到待上传列表
+  const pendingFile = rawFile as PendingMediaFile
+  pendingFile.uid = uid
+  pendingFile.caption = ''
+  pendingFile.previewUrl = previewUrl
+  pendingMediaFiles.value.push(pendingFile)
+
+  console.log('[媒体上传] 已添加到待上传列表，当前数量:', pendingMediaFiles.value.length)
+
+  ElMessage.success(`已添加：${rawFile.name}`)
+
+  // 清除上传组件的文件列表
+  if (uploadRef.value) {
+    uploadRef.value.clearFiles()
+  }
+}
+
+// handleMediaUpload 用于 http-request（当 auto-upload=true 时使用）
+async function handleMediaUpload(file: any) {
+  console.log('[媒体上传] handleMediaUpload 被调用（备用）')
+  handleFileChange(file)
+}
+
+function beforeMediaUpload(file: File) {
+  const isAllowed = file.type.startsWith('image/') || file.type.startsWith('video/') || file.type.startsWith('audio/')
+  if (!isAllowed) {
+    ElMessage.error('只能上传图片、视频或音频文件')
+    if (uploadRef.value) {
+      uploadRef.value.clearFiles()
+    }
+    return false
+  }
+  const isLt50M = file.size / 1024 / 1024 < 50
+  if (!isLt50M) {
+    ElMessage.error('文件大小不能超过 50MB')
+    if (uploadRef.value) {
+      uploadRef.value.clearFiles()
+    }
+    return false
+  }
+  return true
+}
+
+// 删除待上传文件
+function removePendingFile(file: PendingMediaFile) {
+  // 释放预览 URL
+  if (file.previewUrl) {
+    URL.revokeObjectURL(file.previewUrl)
+  }
+  pendingMediaFiles.value = pendingMediaFiles.value.filter(f => f.uid !== file.uid)
+}
+
+// 删除已上传文件
+async function removeMediaItem(media: QuestionMedia) {
+  await ElMessageBox.confirm('确定删除该媒体文件吗？', '提示', { type: 'warning' })
+  try {
+    await questionsApi.removeMedia(media.id)
+    mediaItems.value = mediaItems.value.filter(m => m.id !== media.id)
+    ElMessage.success('删除成功')
+  } catch (e: any) {
+    ElMessage.error(e.message || '删除失败')
+  }
+}
+
+async function updateMediaCaption(media: QuestionMedia) {
+  // 目前 caption 更新需要重新上传或调用更新接口
+  // 简化处理：暂时只本地更新，保存题目时一并提交
+}
+
+// ─── 表单操作 ──────────────────────────────────────────
 function openCreate() {
   editId.value = null
   Object.assign(qForm, {
@@ -497,6 +824,12 @@ function openCreate() {
     ],
   })
   fillAnswer.value = ''
+  mediaItems.value = []
+  // 清理待上传文件的预览 URL
+  pendingMediaFiles.value.forEach(f => {
+    if (f.previewUrl) URL.revokeObjectURL(f.previewUrl)
+  })
+  pendingMediaFiles.value = []
   questionDialogVisible.value = true
 }
 
@@ -514,6 +847,12 @@ function openEdit(row: Question) {
   if (row.type === 'FILL') {
     fillAnswer.value = row.options[0]?.content ?? ''
   }
+  // 清理待上传文件的预览 URL
+  pendingMediaFiles.value.forEach(f => {
+    if (f.previewUrl) URL.revokeObjectURL(f.previewUrl)
+  })
+  pendingMediaFiles.value = []
+  mediaItems.value = row.mediaItems ? row.mediaItems.map(m => ({ ...m })) : []
   questionDialogVisible.value = true
 }
 
@@ -521,23 +860,130 @@ function resetQuestionForm() {
   qFormRef.value?.resetFields()
 }
 
+// 对话框关闭时清理待上传文件
+function handleDialogClose() {
+  qFormRef.value?.resetFields()
+  // 清理待上传文件的预览 URL
+  pendingMediaFiles.value.forEach(f => {
+    if (f.previewUrl) URL.revokeObjectURL(f.previewUrl)
+  })
+  pendingMediaFiles.value = []
+}
+
 async function handleQuestionSubmit() {
+  // 选择题必须先选择正确答案
+  if (qForm.type === 'SINGLE' || qForm.type === 'MULTIPLE') {
+    const hasCorrect = qForm.options.some(o => o.isCorrect)
+    if (!hasCorrect) {
+      ElMessage.warning('请至少选择一个正确答案')
+      return
+    }
+  }
+
   await qFormRef.value?.validate()
   submitting.value = true
   try {
-    const payload: any = { ...qForm }
+    console.log('[题目保存] 开始保存题目，editId:', editId.value)
+    console.log('[题目保存] 待上传文件数量:', pendingMediaFiles.value.length)
+    console.log('[题目保存] qForm.type:', qForm.type)
+    console.log('[题目保存] qForm.options:', qForm.options)
+    console.log('[题目保存] payload:', {
+      type: qForm.type,
+      content: qForm.content,
+      options: qForm.type === 'FILL' ? fillAnswer.value : qForm.options
+    })
+
+    // 第一步：保存题目（不包含待上传的媒体文件）
+    const payload: any = {
+      ...qForm,
+      mediaItems: mediaItems.value.map(m => ({
+        id: m.id,
+        type: m.type,
+        url: m.url,
+        caption: m.caption,
+        sortOrder: m.sortOrder,
+        fileSize: m.fileSize,
+        duration: m.duration,
+      })),
+    }
     if (qForm.type === 'FILL') {
       payload.options = fillAnswer.value
         ? [{ label: '1', content: fillAnswer.value, isCorrect: true, sortOrder: 0 }]
         : []
     }
+
+    let questionId = editId.value
+
     if (editId.value) {
+      // 编辑：直接更新
+      console.log('[题目保存] 更新现有题目')
       await questionsApi.update(editId.value, payload)
       ElMessage.success('更新成功')
     } else {
-      await questionsApi.create(payload)
+      // 新增：先创建题目
+      console.log('[题目保存] 创建新题目，payload:', JSON.stringify(payload, null, 2))
+      const result = await questionsApi.create(payload) as any
+      questionId = result.id
+      editId.value = result.id
+      console.log('[题目保存] 题目创建成功，ID:', questionId)
       ElMessage.success('创建成功')
     }
+
+    // 第二步：上传待上传的媒体文件
+    console.log('[媒体上传] 条件检查 - pendingMediaFiles.length:', pendingMediaFiles.value.length, 'questionId:', questionId)
+    console.log('[媒体上传] 条件检查结果:', pendingMediaFiles.value.length > 0 && questionId)
+
+    if (pendingMediaFiles.value.length > 0 && questionId) {
+      console.log('[媒体上传] 开始上传媒体文件到题目:', questionId)
+      console.log('[媒体上传] 待上传文件列表:', pendingMediaFiles.value.map(f => ({ name: f.name, size: f.size, type: f.type })))
+      ElMessage.info('正在上传媒体文件...')
+
+      for (let i = 0; i < pendingMediaFiles.value.length; i++) {
+        const file = pendingMediaFiles.value[i]
+        try {
+          console.log(`[媒体上传] 上传第 ${i + 1}/${pendingMediaFiles.value.length} 个文件:`, file.name)
+          console.log('[媒体上传] FormData 内容 - file:', file.name, 'caption:', file.caption)
+
+          const formData = new FormData()
+          formData.append('file', file)
+          if (file.caption) {
+            formData.append('caption', file.caption)
+          }
+
+          console.log('[媒体上传] 准备调用 API...')
+          const uploadResult = await questionsApi.uploadMedia(questionId, formData) as any
+          console.log('[媒体上传] API 返回结果:', uploadResult)
+
+          // 保存用户输入的说明文字
+          if (file.caption) {
+            uploadResult.caption = file.caption
+          }
+          mediaItems.value.push(uploadResult)
+
+          // 显示进度
+          ElMessage.success(`已上传 ${i + 1}/${pendingMediaFiles.value.length}: ${file.name}`)
+        } catch (e: any) {
+          console.error('[媒体上传] 上传失败:', e)
+          ElMessage.error(`文件 ${file.name} 上传失败：${e.message}`)
+        }
+      }
+
+      ElMessage.success('媒体文件上传完成')
+    } else {
+      if (pendingMediaFiles.value.length === 0) {
+        console.log('[媒体上传] 没有待上传的文件')
+      }
+      if (!questionId) {
+        console.log('[媒体上传] 题目 ID 为空')
+      }
+    }
+
+    // 第三步：清理待上传文件
+    pendingMediaFiles.value.forEach(f => {
+      if (f.previewUrl) URL.revokeObjectURL(f.previewUrl)
+    })
+    pendingMediaFiles.value = []
+
     questionDialogVisible.value = false
     await loadQuestions()
   } finally {
@@ -666,8 +1112,18 @@ onMounted(() => {
   margin-top: 12px;
   justify-content: flex-end;
 }
+.question-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .question-content {
   font-size: 13px;
+}
+.question-media-preview {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 .options-editor {
   display: flex;
@@ -708,16 +1164,26 @@ onMounted(() => {
 .option-input {
   flex: 1;
 }
-.import-example {
-  background: #f5f7fa;
-  padding: 10px;
-  border-radius: 4px;
-  font-size: 11px;
-  line-height: 1.5;
-  overflow-x: auto;
-  max-height: 240px;
+.import-tips {
+  margin-bottom: 16px;
 }
-.import-result { margin-top: 12px; }
+.import-tips p {
+  margin: 4px 0;
+  font-size: 13px;
+  color: #606266;
+}
+.tip-note {
+  font-size: 12px;
+  color: #909399;
+}
+.import-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.import-result {
+  margin-top: 12px;
+}
 .error-list {
   margin-top: 8px;
   padding-left: 20px;
@@ -725,5 +1191,115 @@ onMounted(() => {
   color: #e6a23c;
   max-height: 100px;
   overflow-y: auto;
+}
+
+/* 媒体上传样式 */
+.media-uploader {
+  margin-bottom: 16px;
+}
+.media-uploader .el-upload {
+  width: 100%;
+}
+.media-uploader .el-upload-dragger {
+  width: 100%;
+  padding: 20px;
+}
+
+/* 媒体列表样式 */
+.media-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-height: 400px;
+  overflow-y: auto;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+.media-list-header {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+/* 待上传列表（蓝色边框） */
+.pending-list {
+  border: 1px solid #d9ecff;
+  background: #f0f9ff;
+}
+.pending-list .media-list-header {
+  color: #409eff;
+  border-bottom-color: #d9ecff;
+}
+
+/* 已上传列表（绿色边框） */
+.uploaded-list {
+  border: 1px solid #e1f3d8;
+  background: #f0f9eb;
+}
+.uploaded-list .media-list-header {
+  color: #67c23a;
+  border-bottom-color: #e1f3d8;
+}
+
+.media-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  background: #fff;
+}
+.media-preview {
+  flex-shrink: 0;
+}
+.media-thumb {
+  width: 120px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.media-thumb:hover {
+  opacity: 0.8;
+}
+.media-thumb-audio {
+  width: 200px;
+}
+.media-file-icon {
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border-radius: 4px;
+  color: #909399;
+}
+.media-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.media-name {
+  font-size: 14px;
+  color: #303133;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.media-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #909399;
 }
 </style>

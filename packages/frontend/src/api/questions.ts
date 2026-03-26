@@ -20,6 +20,18 @@ export interface QuestionCategory {
   children?: QuestionCategory[]
 }
 
+export interface QuestionMedia {
+  id: string
+  questionId: string
+  type: string  // image / video / audio / file
+  url: string
+  caption?: string
+  sortOrder?: number
+  fileSize?: number
+  duration?: number
+  createdAt: string
+}
+
 export interface Question {
   id: string
   type: QuestionType
@@ -30,6 +42,7 @@ export interface Question {
   categoryId?: string
   category?: { id: string; name: string }
   options: QuestionOption[]
+  mediaItems: QuestionMedia[]
   isActive: boolean
   createdAt: string
 }
@@ -75,4 +88,14 @@ export const questionsApi = {
     }),
   exportExcel: (query?: QuestionQuery) =>
     request.get('/questions/export', { params: query, responseType: 'blob' }),
+
+  // 媒体资源
+  uploadMedia: (questionId: string, formData: FormData) =>
+    request.post(`/questions/${questionId}/media`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  getMedia: (mediaId: string) =>
+    request.get<QuestionMedia>(`/questions/media/${mediaId}`),
+  removeMedia: (mediaId: string) =>
+    request.delete(`/questions/media/${mediaId}`),
 }

@@ -1,24 +1,8 @@
-# AI 导入题库与虚拟病人完全方案
+# AI 虚拟病人功能设计方案
 
-> 文档版本：v2.0
-> 创建时间：2026-03-24
-> 最后更新：2026-03-24
+> 文档版本：v1.0
+> 创建时间：2026-03-25
 > 状态：待开发
-
----
-
-## 目录
-
-1. [功能概述](#一功能概述)
-2. [AI 导入题库功能](#二 ai 导入题库功能)
-3. [AI 虚拟病人模拟](#三 ai 虚拟病人模拟)
-4. [AI 平台配置指南](#四 ai 平台配置指南)
-5. [技术架构](#五技术架构)
-6. [数据库设计](#六数据库设计)
-7. [接口设计](#七接口设计)
-8. [前端界面](#八前端界面)
-9. [测试方案](#九测试方案)
-10. [开发任务](#十开发任务)
 
 ---
 
@@ -26,94 +10,32 @@
 
 ### 1.1 需求背景
 
-本系统为中医/医学教学在线考试平台，需要两大 AI 核心功能：
+中医/医学教学需要大量的临床问诊练习，但真实病人难找，SP（标准化病人）培训成本高。AI 虚拟病人可以：
 
-| 功能 | 需求说明 | 痛点 |
-|------|----------|------|
-| **AI 导入题库** | 教师手上有 Word/PDF/图片试卷，需自动识别录入 | 人工抄录效率极低，100 题需数小时 |
-| **AI 虚拟病人** | 学生问诊练习需要虚拟病人，模拟真实患者 | 真实病人难找，SP(标准化病人) 培训成本高 |
+| 需求 | 说明 | 痛点 |
+|------|------|------|
+| **问诊练习** | 学生需要大量临床病例练习 | 真实病人难找，配合度低 |
+| **标准化考核** | 统一病例，公平评分 | 真人 SP 状态不稳定 |
+| **反复练习** | 同一病例可多次问诊 | SP 人力成本高 |
+| ** instant 反馈** | 问诊后立即评分 | 教师批改工作量大 |
 
 ### 1.2 功能目标
 
-#### AI 导入题库
-1. **支持多种输入格式**：Word(.docx)、PDF、图片 (JPG/PNG)
-2. **自动题型识别**：单选题、多选题、判断题、填空题
-3. **自动结构化**：题目内容、选项 (A/B/C/D)、正确答案、解析
-4. **批量处理**：一次上传多个文件，批量识别后统一入库
-5. **人工校对**：AI 识别结果需人工确认后再入库，确保准确性
-
-#### AI 虚拟病人
-1. **文字对话**：AI 扮演病人，学生问诊
-2. **语音对话**：语音输入/输出，更真实
-3. **数字人形象**：2D/3D 虚拟人，有表情、口型、动作
-4. **病例管理**：预设多种病例（胃痛、感冒、头痛等）
-5. **评估反馈**：问诊结束后给出评分和建议
-
----
-
-## 二、AI 导入题库功能
-
-### 2.1 整体流程
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  用户上传文件（Word / PDF / 图片）                                │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  文件预处理（格式转换）                                           │
-│  - Word (.docx) → 提取文本 → 分段                               │
-│  - PDF → 文本型：直接提取 / 扫描版：OCR 识别                       │
-│  - 图片 → OCR 识别 → 文本                                        │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  AI 大模型智能解析（火山引擎豆包 API）                              │
-│  Prompt: "从以下文本中提取题目，返回 JSON 格式：{type, content,   │
-│  options[], answer, explanation}"                                │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  结构化结果校对（前端界面）                                       │
-│  用户确认/修改 → 选择分类 → 批量入库                              │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 2.2 技术选型
-
-| 层级 | 技术方案 | 说明 |
-|------|---------|------|
-| **文件解析** | `mammoth.js` (Word) | 提取.docx 文本内容 |
-| | `pdf-parse` (PDF 文本) | 提取文本型 PDF |
-| | `pdfjs-dist` (PDF 图片) | 扫描版 PDF 转图片后 OCR |
-| | 原生 Canvas (图片) | 图片预览 + 预处理 |
-| **OCR 识别** | 火山引擎 OCR API | 通用文字识别 + 表格识别 |
-| **AI 解析** | 火山引擎豆包大模型 | 题目结构化提取 |
-| **后端** | NestJS + Prisma | 文件上传、任务队列、结果存储 |
-| **前端** | Vue3 + Element Plus | 上传界面、校对界面、进度展示 |
-
----
-
-## 三、AI 虚拟病人模拟
-
-### 3.1 需求分析
-
-虚拟病人需要模拟真实患者的多维度特征：
+**AI 虚拟病人**需要模拟真实患者的多维度特征：
 
 | 维度 | 要求 | 技术实现 |
 |------|------|----------|
 | **语言** | 自然对话，口语化，有情绪 | AI 大模型 + 精心 Prompt |
-| **语音** | 语音输入/输出，真实人声 | TTS/STT服务 |
+| **语音** | 语音输入/输出，真实人声 | TTS/STT 服务 |
 | **视觉** | 有人物形象，会动，有表情 | 2D 数字人/3D 模型 |
 | **口型** | 说话时口型同步 | Lip Sync 技术 |
 | **病例** | 多种疾病，症状准确 | 病例库 + AI 角色扮演 |
 
-### 3.2 技术方案对比
+---
 
-#### 方案 A：2D 视频驱动（最简单，推荐一期使用）
+## 二、技术方案对比
+
+### 方案 A：2D 视频驱动（最简单，推荐一期使用）
 
 **技术**：上传人物照片/视频 → AI 生成说话视频
 
@@ -125,6 +47,7 @@
 | **硅基智能** | 定制报价 | 国内领先 | ⚠️ 需商务对接 |
 
 **HeyGen API 调用示例**：
+
 ```typescript
 // 1. 创建视频任务
 const response = await fetch('https://api.heygen.com/v2/video/generate', {
@@ -167,7 +90,7 @@ const response = await fetch('https://api.heygen.com/v2/video/generate', {
 
 ---
 
-#### 方案 B：3D 实时渲染（推荐二期使用）
+### 方案 B：3D 实时渲染（推荐二期使用）
 
 **技术栈**：Three.js + Ready Player Me + Rhubarb Lip Sync
 
@@ -180,6 +103,7 @@ const response = await fetch('https://api.heygen.com/v2/video/generate', {
 | **语音识别** | 讯飞 / 百度 STT | 语音转文字 |
 
 **Three.js 3D 人物渲染示例**：
+
 ```typescript
 // 1. 加载 3D 人物模型（glTF 格式）
 const loader = new GLTFLoader()
@@ -211,7 +135,7 @@ function updateMouthShape(audioData: Float32Array) {
 
 ---
 
-#### 方案 C：Live2D 2D 模型（折中方案）
+### 方案 C：Live2D 2D 模型（折中方案）
 
 **技术**：Live2D Cubism（Vtuber 同款技术）
 
@@ -233,7 +157,7 @@ function updateMouthShape(audioData: Float32Array) {
 
 ---
 
-### 3.3 推荐方案（分阶段）
+## 三、推荐方案（分阶段）
 
 | 阶段 | 方案 | 目标 | 周期 |
 |------|------|------|------|
@@ -241,7 +165,11 @@ function updateMouthShape(audioData: Float32Array) {
 | **二期** | HeyGen 视频驱动 | 增加视频口播，更真实 | 2 天 |
 | **三期** | Three.js 3D 实时渲染 | 完全实时交互 | 5 天 |
 
-### 3.4 一期实现（文字对话 + 静态头像）
+---
+
+## 四、一期实现（文字对话 + 静态头像）
+
+### 4.1 界面设计
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -267,15 +195,19 @@ function updateMouthShape(audioData: Float32Array) {
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**实现要点**：
+### 4.2 实现要点
+
 1. 使用现有 AI 服务 (`ai.service.ts`) 的 `chat()` 方法
 2. 预设病例 Prompt（胃痛、感冒、头痛等）
 3. 头像使用 emoji 或简单图片，根据情绪切换表情
 4. 可选：接入 TTS 语音播放
 
-### 3.5 二期实现（HeyGen 视频驱动）
+---
 
-**流程**：
+## 五、二期实现（HeyGen 视频驱动）
+
+### 5.1 流程
+
 ```
 1. 后端预设常见回复视频（HeyGen 生成）
    - "医生您好，我最近感觉胃不舒服..."
@@ -290,7 +222,8 @@ function updateMouthShape(audioData: Float32Array) {
 4. 问诊结束，给出评估报告
 ```
 
-**成本估算**（HeyGen）：
+### 5.2 成本估算（HeyGen）
+
 | 套餐 | 价格 | 包含时长 | 可生成视频数（每条 30 秒） |
 |------|------|----------|--------------------------|
 | Creator | $29/月 | 15 分钟 | 30 条 |
@@ -298,9 +231,12 @@ function updateMouthShape(audioData: Float32Array) {
 
 **优化方案**：只生成开场白和常见回复（约 20 条），其他用文字回复。
 
-### 3.6 三期实现（3D 实时数字人）
+---
 
-**技术架构**：
+## 六、三期实现（3D 实时数字人）
+
+### 6.1 技术架构
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  前端（Vue3 + Three.js）                                     │
@@ -324,7 +260,7 @@ function updateMouthShape(audioData: Float32Array) {
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**核心代码**：
+### 6.2 核心代码
 
 ```typescript
 // 前端：3D 人物组件 (VirtualPatient.vue)
@@ -381,228 +317,7 @@ function setupLipSync(audioStream: MediaStream) {
 
 ---
 
-## 四、AI 平台配置指南
-
-### 4.1 火山引擎豆包大模型配置
-
-#### 获取 API Key 步骤
-
-1. 访问火山引擎控制台：https://console.volcengine.com/ark
-2. 注册/登录账号（支持手机号/微信）
-3. 进入「方舟·大模型」服务
-4. 点击「创建应用」
-5. 填写应用名称（如：若容考试平台）
-6. 获取 **API Key**（一串以 `eyJ` 开头的字符）
-
-#### 在系统中配置
-
-进入系统后，点击导航栏 **AI 大模型** 菜单，填写以下配置：
-
-| 字段 | 填写示例 | 说明 |
-|------|----------|------|
-| **API Key** | `eyJhbGci...`（你的真实 Key） | 从火山引擎控制台获取 |
-| **API Secret** | 留空 | 豆包不需要 |
-| **API 端点** | `https://ark.cn-beijing.volces.com/api/v3/chat/completions` | 默认已填好 |
-| **使用模型** | `doubao-pro-4k` | Pro 能力强，Lite 便宜 |
-| **最大 Token** | `2000` | 默认值 |
-| **启用状态** | ✅ 开启 | 启用 AI |
-| **系统提示词** | （默认内置了胃病患者的提示词） | 可自定义病人剧本 |
-
-#### 模型选择建议
-
-| 场景 | 推荐模型 | 价格（元/千 tokens） | 说明 |
-|------|----------|---------------------|------|
-| 虚拟病人对话 | doubao-pro-4k | 输入 0.0008 / 输出 0.002 | 推理能力强，回复自然 |
-| 题目解析导入 | doubao-pro-32k | 输入 0.0008 / 输出 0.002 | 长文档处理好 |
-| OCR 识别 | doubao-vision-pro-32k | 输入 0.0008 / 输出 0.002 | 支持图片理解 |
-| 低成本场景 | doubao-lite-4k | 输入 0.0003 / 输出 0.0006 | 最便宜 |
-
-#### 成本估算
-
-**虚拟病人对话**（按 doubao-pro-4k 计算）：
-- 单次对话：输入 100 tokens + 输出 150 tokens = 250 tokens
-- 成本：250 / 1000 × 0.002 ≈ ¥0.0005
-- 1000 次对话：约 ¥0.5
-
-**题目导入**（按 doubao-pro-32k 计算）：
-- 100 题试卷解析：输入 2000 tokens + 输出 1000 tokens = 3000 tokens
-- 成本：3000 / 1000 × 0.002 = ¥0.006
-- 100 份试卷：约 ¥0.6
-
----
-
-### 4.2 其他 AI 平台（备选）
-
-| 平台 | 模型 | 价格 | 文档 |
-|------|------|------|------|
-| 百度文心一言 | ERNIE-3.5 | ¥0.0008/千 | https://cloud.baidu.com/doc/WENXINWORKSHOP |
-| 阿里通义千问 | Qwen-Plus | ¥0.0015/千 | https://help.aliyun.com/zh/dashscope |
-| 腾讯混元 | HunYuan-Standard | ¥0.0008/千 | https://cloud.tencent.com/document/product/1729 |
-| 讯飞星火 | Spark Pro | ¥0.002/千 | https://www.xfyun.cn/doc/spark |
-| 智谱 AI | GLM-Plus | ¥0.005/千 | https://open.bigmodel.cn/dev/api |
-
-**切换方法**：在 AI 设置页面修改 API 端点和 Key 即可。
-
----
-
-### 4.3 TTS 语音服务配置（虚拟病人语音）
-
-#### 推荐：Azure Cognitive Services
-
-**价格**：¥77/月起（标准版）
-
-**配置**：
-| 字段 | 值 |
-|------|-----|
-| API Key | `xxx`（Azure 门户获取） |
-| Region | `eastasia`（东亚） |
-| Voice | `zh-CN-XiaoxiaoNeural`（温柔女声） |
-
-**调用示例**：
-```typescript
-// 文字转语音
-async function textToSpeech(text: string): Promise<Blob> {
-  const response = await fetch(
-    'https://eastasia.api.speech.microsoft.com/cognitiveservices/v1',
-    {
-      method: 'POST',
-      headers: {
-        'Ocp-Apim-Subscription-Key': 'YOUR_KEY',
-        'Content-Type': 'application/ssml+xml',
-      },
-      body: `
-        <speak version="1.0" xml:lang="zh-CN">
-          <voice name="zh-CN-XiaoxiaoNeural">
-            ${text}
-          </voice>
-        </speak>
-      `,
-    }
-  )
-  return response.blob()
-}
-```
-
-#### 备选：阿里云智能语音
-
-**价格**：¥0.005/次（按量付费）
-
----
-
-### 4.4 OCR 服务配置（题目导入）
-
-**火山引擎 OCR**：
-- 通用 OCR：¥0.00007/张
-- 表格 OCR：¥0.00014/张
-
-**调用配置**：
-| 字段 | 值 |
-|------|-----|
-| API Key | 同豆包大模型（火山引擎账号通用） |
-| OCR 端点 | `https://ark.cn-beijing.volces.com/api/v3/ocr/general` |
-
----
-
-## 五、技术架构
-
-### 5.1 整体架构图
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  前端（Vue3 + Element Plus + Three.js）                          │
-├─────────────────────────────────────────────────────────────────┤
-│  AI 导入题库界面                                                 │
-│  ├── 文件上传组件                                                │
-│  ├── 校对确认界面                                                │
-│  └── 进度展示组件                                                │
-│                                                                 │
-│  AI 虚拟病人界面                                                 │
-│  ├── 3D 人物渲染（Three.js）                                    │
-│  ├── 对话界面（聊天气泡）                                        │
-│  ├── 语音输入/输出组件                                           │
-│  └── 病例选择面板                                                │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            │ WebSocket / HTTP
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  后端（NestJS + Prisma）                                        │
-├─────────────────────────────────────────────────────────────────┤
-│  AI 服务层                                                       │
-│  ├── ai.service.ts → 火山引擎 API 调用                          │
-│  ├── file-parser.service.ts → 文件解析                         │
-│  ├── ai-parser.service.ts → 题目结构化                         │
-│  └── tts.service.ts → 语音合成                                 │
-│                                                                 │
-│  业务层                                                         │
-│  ├── questions.module → 题库管理                               │
-│  ├── exams.module → 考试管理                                   │
-│  └── virtual-patient.module → 虚拟病人                         │
-└─────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  外部 AI 服务                                                    │
-├─────────────────────────────────────────────────────────────────┤
-│  火山引擎                                                       │
-│  ├── 豆包大模型 API → 对话/题目解析                             │
-│  └── OCR API → 图片文字识别                                    │
-│                                                                 │
-│  Azure Speech → TTS 语音合成                                    │
-│  HeyGen API → 视频数字人（二期）                                │
-│  阿里云 OSS → 文件存储                                          │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 六、数据库设计
-
-### 6.1 AI 导入题库相关
-
-```prisma
-// AI 导入任务记录
-model AiImportTask {
-  id           String   @id @default(cuid())
-  tenantId     String
-  userId       String
-  fileType     String   // word / pdf / image
-  fileName     String   // 原始文件名
-  fileUrl      String   // OSS 存储路径
-  status       String   // pending / processing / completed / failed
-  totalCount   Int      @default(0)  // 识别题目总数
-  successCount Int      @default(0)  // 成功入库数量
-  errorCount   Int      @default(0)  // 失败数量
-  parsedData   Json?    // AI 解析结果（结构化题目数组）
-  createdAt    DateTime @default(now())
-  completedAt  DateTime?
-
-  @@index([tenantId, userId])
-  @@index([status])
-  @@map("ai_import_tasks")
-}
-
-// AI 导入题目详情（校对用）
-model AiImportItem {
-  id           String   @id @default(cuid())
-  taskId       String
-  questionType String   // SINGLE / MULTIPLE / JUDGE / FILL
-  content      String   @db.Text
-  options      Json?    // { label: 'A', content: '...' }[]
-  answer       String   // 正确答案
-  explanation  String?  @db.Text
-  difficulty   String   @default('MEDIUM')
-  status       String   // pending / confirmed / skipped / imported
-  importedId   String?  // 导入后的 Question ID
-  errorMessage String?  // 错误信息
-  createdAt    DateTime @default(now())
-
-  @@index([taskId, status])
-  @@map("ai_import_items")
-}
-```
-
-### 6.2 AI 虚拟病人相关
+## 七、数据库设计
 
 ```prisma
 // 虚拟病人病例
@@ -665,19 +380,9 @@ model PatientConsultation {
 
 ---
 
-## 七、接口设计
+## 八、后端接口设计
 
-### 7.1 AI 导入题库接口
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/questions/ai-import/upload` | 上传文件 |
-| GET | `/questions/ai-import/tasks` | 获取任务列表 |
-| GET | `/questions/ai-import/tasks/:id` | 获取任务详情 |
-| POST | `/questions/ai-import/tasks/:id/confirm` | 确认导入 |
-| DELETE | `/questions/ai-import/tasks/:id` | 删除任务 |
-
-### 7.2 AI 虚拟病人接口
+### 8.1 接口列表
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -690,13 +395,7 @@ model PatientConsultation {
 
 ---
 
-## 八、前端界面
-
-### 8.1 AI 导入题库界面
-
-参考原文档 Section 5 的 UI 设计图。
-
-### 8.2 AI 虚拟病人界面
+## 九、前端界面设计
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
@@ -725,19 +424,97 @@ model PatientConsultation {
 
 ---
 
-## 九、测试方案
+## 十、AI 平台配置指南
 
-### 9.1 AI 导入题库测试
+### 10.1 火山引擎豆包大模型配置
 
-| 测试项 | 目标值 | 测试方法 |
-|--------|--------|----------|
-| Word 识别准确率 | ≥95% | 25 题 Word 文档测试 |
-| PDF 识别准确率 | ≥90% | 文本型 + 扫描版各 20 题 |
-| 图片 OCR 准确率 | ≥85% | 手机拍照 10 题测试 |
-| 批量处理性能 | ≤30 秒/25 题 | 计时测试 |
-| 并发支持 | 10 用户同时 | 压力测试 |
+#### 获取 API Key 步骤
 
-### 9.2 AI 虚拟病人测试
+1. 访问火山引擎控制台：https://console.volcengine.com/ark
+2. 注册/登录账号（支持手机号/微信）
+3. 进入「方舟·大模型」服务
+4. 点击「创建应用」
+5. 填写应用名称（如：若容考试平台）
+6. 获取 **API Key**（一串以 `eyJ` 开头的字符）
+
+#### 在系统中配置
+
+进入系统后，点击导航栏 **AI 大模型** 菜单，填写以下配置：
+
+| 字段 | 填写示例 | 说明 |
+|------|----------|------|
+| **API Key** | `eyJhbGci...`（你的真实 Key） | 从火山引擎控制台获取 |
+| **API Secret** | 留空 | 豆包不需要 |
+| **API 端点** | `https://ark.cn-beijing.volces.com/api/v3/chat/completions` | 默认已填好 |
+| **使用模型** | `doubao-pro-4k` | Pro 能力强，Lite 便宜 |
+| **最大 Token** | `2000` | 默认值 |
+| **启用状态** | ✅ 开启 | 启用 AI |
+| **系统提示词** | （默认内置了胃病患者的提示词） | 可自定义病人剧本 |
+
+#### 模型选择建议
+
+| 场景 | 推荐模型 | 价格（元/千 tokens） | 说明 |
+|------|----------|---------------------|------|
+| 虚拟病人对话 | doubao-pro-4k | 输入 0.0008 / 输出 0.002 | 推理能力强，回复自然 |
+| 低成本场景 | doubao-lite-4k | 输入 0.0003 / 输出 0.0006 | 最便宜 |
+
+#### 成本估算
+
+**虚拟病人对话**（按 doubao-pro-4k 计算）：
+- 单次对话：输入 100 tokens + 输出 150 tokens = 250 tokens
+- 成本：250 / 1000 × 0.002 ≈ ¥0.0005
+- 1000 次对话：约 ¥0.5
+
+---
+
+### 10.2 TTS 语音服务配置（虚拟病人语音）
+
+#### 推荐：Azure Cognitive Services
+
+**价格**：¥77/月起（标准版）
+
+**配置**：
+| 字段 | 值 |
+|------|-----|
+| API Key | `xxx`（Azure 门户获取） |
+| Region | `eastasia`（东亚） |
+| Voice | `zh-CN-XiaoxiaoNeural`（温柔女声） |
+
+**调用示例**：
+
+```typescript
+// 文字转语音
+async function textToSpeech(text: string): Promise<Blob> {
+  const response = await fetch(
+    'https://eastasia.api.speech.microsoft.com/cognitiveservices/v1',
+    {
+      method: 'POST',
+      headers: {
+        'Ocp-Apim-Subscription-Key': 'YOUR_KEY',
+        'Content-Type': 'application/ssml+xml',
+      },
+      body: `
+        <speak version="1.0" xml:lang="zh-CN">
+          <voice name="zh-CN-XiaoxiaoNeural">
+            ${text}
+          </voice>
+        </speak>
+      `,
+    }
+  )
+  return response.blob()
+}
+```
+
+#### 备选：阿里云智能语音
+
+**价格**：¥0.005/次（按量付费）
+
+---
+
+## 十一、测试方案
+
+### 11.1 AI 虚拟病人测试
 
 | 测试项 | 目标值 | 测试方法 |
 |--------|--------|----------|
@@ -749,22 +526,9 @@ model PatientConsultation {
 
 ---
 
-## 十、开发任务
+## 十二、开发任务
 
-### Phase 1: AI 导入题库（10 天）
-
-| 任务 | 工期 | 负责人 |
-|------|------|--------|
-| 数据库表创建 | 0.5 天 | 后端 |
-| 文件解析服务 | 1 天 | 后端 |
-| AI 解析服务 | 1 天 | 后端 |
-| 导入接口 | 1 天 | 后端 |
-| 上传界面 | 1 天 | 前端 |
-| 校对界面 | 2 天 | 前端 |
-| 测试调优 | 2 天 | 全体 |
-| 文档编写 | 0.5 天 | 全体 |
-
-### Phase 2: AI 虚拟病人 - 一期（5 天）
+### Phase 1: AI 虚拟病人 - 一期（5 天）
 
 | 任务 | 工期 | 说明 |
 |------|------|------|
@@ -774,7 +538,7 @@ model PatientConsultation {
 | 病例管理界面 | 1 天 | CRUD |
 | 问诊界面 | 2 天 | 对话 UI+ 静态头像 |
 
-### Phase 3: AI 虚拟病人 - 二期（5 天）
+### Phase 2: AI 虚拟病人 - 二期（5 天）
 
 | 任务 | 工期 | 说明 |
 |------|------|------|
@@ -784,7 +548,7 @@ model PatientConsultation {
 | 视频播放组件 | 1 天 | 前端 |
 | 评估系统 | 1 天 | AI 评分 + 反馈 |
 
-### Phase 4: AI 虚拟病人 - 三期（7 天）
+### Phase 3: AI 虚拟病人 - 三期（7 天）
 
 | 任务 | 工期 | 说明 |
 |------|------|------|
@@ -798,36 +562,6 @@ model PatientConsultation {
 ---
 
 ## 附录 A：AI Prompt 模板
-
-### 题目解析 Prompt
-
-```
-你是一名专业的题目结构化助手。请从以下文本中提取所有题目，并以 JSON 数组格式返回。
-
-每道题目的格式：
-{
-  "questionType": "SINGLE" | "MULTIPLE" | "JUDGE" | "FILL",
-  "content": "题目内容（不包含选项）",
-  "options": [
-    { "label": "A", "content": "选项 A 内容", "isCorrect": true/false },
-    ...
-  ],
-  "answer": "正确答案",
-  "explanation": "题目解析（可选）"
-}
-
-要求：
-1. 准确识别题型
-2. 选择题的 isCorrect 根据答案自动判断
-3. 判断题选项固定为 A.正确 B.错误
-4. 填空题无答案时标记为"UNKNOWN"
-5. 直接返回 JSON 数组，不要其他说明
-
-文本内容：
----
-{文本}
----
-```
 
 ### 虚拟病人 Prompt（胃病患者）
 
@@ -876,7 +610,3 @@ model PatientConsultation {
 - Rhubarb Lip Sync：https://github.com/DanielSWolf/rhubarb-lip-sync
 - Live2D Web SDK：https://github.com/dylanNew/live2d
 - VSeeFace（免费虚拟人）：https://www.vseeface.icu/
-
----
-
-*文档结束*

@@ -9,8 +9,12 @@ import { PrismaService } from '../../prisma/prisma.service'
 import {
   CreateCategoryDto, UpdateCategoryDto,
   CreateQuestionDto, UpdateQuestionDto, QueryQuestionDto, ImportQuestionDto,
+  QuestionMediaDto,
 } from './dto/question.dto'
 import { QuestionType, Difficulty } from '@prisma/client'
+import { createWriteStream } from 'fs'
+import { join } from 'path'
+import { v4 as uuidv4 } from 'uuid'
 
 @Injectable()
 export class QuestionsService {
@@ -94,6 +98,7 @@ export class QuestionsService {
         orderBy: { createdAt: 'desc' },
         include: {
           options: { orderBy: { sortOrder: 'asc' } },
+          mediaItems: { orderBy: { sortOrder: 'asc' } },  // 包含媒体资源
           category: { select: { id: true, name: true } },
         },
       }),
@@ -107,6 +112,7 @@ export class QuestionsService {
       where: { id, tenantId, isActive: true },
       include: {
         options: { orderBy: { sortOrder: 'asc' } },
+        mediaItems: { orderBy: { sortOrder: 'asc' } },  // 包含媒体资源
         category: { select: { id: true, name: true } },
       },
     })
@@ -114,7 +120,7 @@ export class QuestionsService {
     return q
   }
 
-  async create(tenantId: string, dto: CreateQuestionDto) {
+  async create(tenantId: string, dto: CreateQuestionDto & { mediaItems?: QuestionMediaDto[] }) {
     this._validateOptions(dto.type, dto.options)
     return this.prisma.$transaction(async (tx) => {
       const q = await tx.question.create({
@@ -139,17 +145,31 @@ export class QuestionsService {
           })),
         })
       }
+      // 创建媒体资源
+      if (dto.mediaItems?.length) {
+        await tx.questionMedia.createMany({
+          data: dto.mediaItems.map((m, i) => ({
+            questionId: q.id,
+            type: m.type,
+            url: m.url,
+            caption: m.caption ?? null,
+            sortOrder: m.sortOrder ?? i,
+            fileSize: m.fileSize ?? 0,
+            duration: m.duration ?? 0,
+          })),
+        })
+      }
       return q
     })
   }
 
-  async update(tenantId: string, id: string, dto: UpdateQuestionDto) {
+  async update(tenantId: string, id: string, dto: UpdateQuestionDto & { mediaItems?: QuestionMediaDto[] }) {
     const q = await this._findOrFail(tenantId, id)
     if (dto.options !== undefined) {
       this._validateOptions(q.type, dto.options)
     }
     return this.prisma.$transaction(async (tx) => {
-      const { options, ...rest } = dto
+      const { options, mediaItems, ...rest } = dto
       const updated = await tx.question.update({ where: { id }, data: rest })
       if (options !== undefined) {
         await tx.questionOption.deleteMany({ where: { questionId: id } })
@@ -161,6 +181,23 @@ export class QuestionsService {
               content: o.content,
               isCorrect: o.isCorrect,
               sortOrder: o.sortOrder ?? i,
+            })),
+          })
+        }
+      }
+      // 更新媒体资源（先删除旧的，再创建新的）
+      if (mediaItems !== undefined) {
+        await tx.questionMedia.deleteMany({ where: { questionId: id } })
+        if (mediaItems.length) {
+          await tx.questionMedia.createMany({
+            data: mediaItems.map((m, i) => ({
+              questionId: id,
+              type: m.type,
+              url: m.url,
+              caption: m.caption ?? null,
+              sortOrder: m.sortOrder ?? i,
+              fileSize: m.fileSize ?? 0,
+              duration: m.duration ?? 0,
             })),
           })
         }
@@ -399,5 +436,99 @@ export class QuestionsService {
         ...item,
         children: this._buildCategoryTree(list, item.id),
       }))
+  }
+
+  // ─── 媒体资源管理 ─────────────────────────────────────────
+
+  /**
+   * 上传题目媒体文件
+   */
+  async uploadMedia(tenantId: string, questionId: string, file: Express.Multer.File, caption?: string, type?: string) {
+    // 验证题目是否存在
+    await this._findOrFail(tenantId, questionId)
+
+    // 生成唯一文件名
+    const ext = file.originalname.split('.').pop() || 'bin'
+    const filename = `${uuidv4()}.${ext}`
+    const uploadDir = join(process.cwd(), 'uploads', 'questions', tenantId)
+    const filePath = join(uploadDir, filename)
+
+    // 确保目录存在
+    const fs = await import('fs/promises')
+    await fs.mkdir(uploadDir, { recursive: true })
+
+    // 写入文件
+    await new Promise<void>((resolve, reject) => {
+      const stream = createWriteStream(filePath)
+      stream.write(file.buffer)
+      stream.on('finish', () => resolve())
+      stream.on('error', (err) => reject(err))
+      stream.end()
+    })
+
+    // 生成访问 URL（本地开发用，生产环境应上传 OSS）
+    const url = `/uploads/questions/${tenantId}/${filename}`
+
+    // 确定媒体类型
+    const mimeType = file.mimetype
+    const mediaType = type || (
+      mimeType.startsWith('image/') ? 'image' :
+      mimeType.startsWith('video/') ? 'video' :
+      mimeType.startsWith('audio/') ? 'audio' : 'file'
+    )
+
+    // 创建媒体记录
+    return this.prisma.questionMedia.create({
+      data: {
+        questionId,
+        type: mediaType,
+        url,
+        caption: caption ?? null,
+        fileSize: file.size,
+      },
+    })
+  }
+
+  /**
+   * 删除媒体资源
+   */
+  async removeMedia(tenantId: string, mediaId: string) {
+    const media = await this.prisma.questionMedia.findUnique({
+      where: { id: mediaId },
+      include: { question: true },
+    })
+    if (!media) throw new NotFoundException('媒体资源不存在')
+
+    // 验证题目属于该租户
+    await this._findOrFail(tenantId, media.questionId)
+
+    // 删除文件（可选：生产环境应删除 OSS 文件）
+    const fs = await import('fs/promises')
+    const filePath = join(process.cwd(), 'uploads', 'questions', tenantId, media.url.split('/').pop()!)
+    try {
+      await fs.unlink(filePath)
+    } catch {
+      // 文件可能已不存在，忽略错误
+    }
+
+    return this.prisma.questionMedia.delete({
+      where: { id: mediaId },
+    })
+  }
+
+  /**
+   * 获取单个媒体资源
+   */
+  async getMedia(tenantId: string, mediaId: string) {
+    const media = await this.prisma.questionMedia.findUnique({
+      where: { id: mediaId },
+      include: { question: true },
+    })
+    if (!media) throw new NotFoundException('媒体资源不存在')
+
+    // 验证题目属于该租户
+    await this._findOrFail(tenantId, media.questionId)
+
+    return media
   }
 }

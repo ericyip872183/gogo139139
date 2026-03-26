@@ -1,0 +1,33 @@
+# 开发环境 Dockerfile - 使用 Node.js 直接运行
+FROM node:20-bookworm
+
+RUN apt-get update && apt-get install -y python3 make gyp && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g pnpm
+
+WORKDIR /app
+
+# 复制根目录配置文件
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+
+# 复制所有 packages
+COPY packages ./packages
+
+# 删除本地 .env 文件，让 docker-compose 环境变量生效
+RUN rm -f packages/backend/.env
+
+# 安装依赖
+RUN pnpm install --no-frozen-lockfile
+
+# 生成 Prisma 客户端
+RUN cd packages/backend && pnpm exec prisma generate
+
+WORKDIR /app/packages/backend
+
+# 清理 dist 目录，避免 TypeScript 编译冲突
+RUN rm -rf dist
+
+EXPOSE 3000
+
+# 运行开发模式
+CMD ["pnpm", "dev"]

@@ -1,0 +1,22 @@
+# 开发环境 Dockerfile - 使用 Vite 开发服务器
+FROM node:20-bookworm
+
+RUN npm install -g pnpm
+
+WORKDIR /app
+
+# 复制根目录配置文件
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
+
+# 复制 packages
+COPY packages ./packages
+
+# 安装依赖
+RUN pnpm install --no-frozen-lockfile
+
+WORKDIR /app/packages/frontend
+
+EXPOSE 5173
+
+# 运行 Vite 开发服务器
+CMD ["pnpm", "dev", "--host", "0.0.0.0"]

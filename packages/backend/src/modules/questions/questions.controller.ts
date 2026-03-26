@@ -147,4 +147,45 @@ export class QuestionsController {
   ) {
     return this.service.remove(user.tenantId, id)
   }
+
+  // ─── 媒体资源接口 ─────────────────────────────────────────
+
+  /**
+   * 上传题目媒体文件
+   */
+  @Post(':id/media')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadMedia(
+    @CurrentUser() user: { tenantId: string },
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('caption') caption?: string,
+    @Body('type') type?: string,
+  ) {
+    return this.service.uploadMedia(user.tenantId, id, file, caption, type)
+  }
+
+  /**
+   * 获取媒体资源详情
+   */
+  @Get('media/:id')
+  getMedia(
+    @CurrentUser() user: { tenantId: string },
+    @Param('id') id: string,
+  ) {
+    return this.service.getMedia(user.tenantId, id)
+  }
+
+  /**
+   * 删除媒体资源
+   */
+  @Delete('media/:id')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
+  removeMedia(
+    @CurrentUser() user: { tenantId: string },
+    @Param('id') id: string,
+  ) {
+    return this.service.removeMedia(user.tenantId, id)
+  }
 }

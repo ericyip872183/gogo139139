@@ -5,12 +5,10 @@ RUN npm install -g pnpm
 WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY packages/backend/package.json ./packages/backend/
-COPY packages/shared/package.json ./packages/shared/
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 COPY packages/backend ./packages/backend
-COPY packages/shared ./packages/shared
 
 RUN cd packages/backend && pnpm exec prisma generate
 RUN cd packages/backend && pnpm build
@@ -23,7 +21,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml package.json ./
 COPY packages/backend/package.json ./packages/backend/
 
-RUN pnpm install --prod --frozen-lockfile
+RUN pnpm install --prod
 
 COPY --from=builder /app/packages/backend/dist ./packages/backend/dist
 COPY --from=builder /app/packages/backend/prisma ./packages/backend/prisma

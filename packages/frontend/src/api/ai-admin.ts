@@ -1,4 +1,4 @@
-import request from './request'
+import request, { getImageRequest } from './request'
 
 /**
  * AI 服务商
@@ -328,5 +328,5 @@ export const aiAdminApi = {
     negativePrompt?: string;  // 负向提示词
     referenceImageUrl?: string;  // 参考图 URL
   }) =>
-    request.post<ImageGenerationResult>('/ai/admin/models/generate-image', data),
+    getImageRequest().post<ImageGenerationResult>('/ai/admin/models/generate-image', data),
 }

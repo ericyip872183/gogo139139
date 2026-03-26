@@ -3,15 +3,22 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // 全局前缀
   app.setGlobalPrefix('api');
 
   // 跨域（本地开发）
   app.enableCors({ origin: true, credentials: true });
+
+  // 静态文件服务（上传的文件）
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+    prefix: '/uploads/',
+  });
 
   // 全局管道：参数校验
   app.useGlobalPipes(
