@@ -56,6 +56,44 @@ export interface QuestionQuery {
   pageSize?: number
 }
 
+// AI 导入相关类型
+export interface AiImportTask {
+  id: string
+  fileName: string
+  fileType: string
+  model: string
+  status: string
+  totalCount: number
+  successCount: number
+  errorCount: number
+  createdAt: string
+  completedAt?: string
+}
+
+export interface AiImportItem {
+  id: string
+  taskId: string
+  questionType: QuestionType
+  content: string
+  options?: { label: string; content: string; isCorrect: boolean }[]
+  answer: string
+  explanation?: string
+  difficulty: Difficulty
+  status: string
+  importedId?: string
+  errorMessage?: string
+  isDuplicate?: boolean
+  similarity?: number
+  existingQuestion?: {
+    id: string
+    content: string
+    categoryId?: string
+  }
+}
+
+// 导入 AiModel 类型（从 ai-admin.ts）
+export type { AiModel } from './ai-admin'
+
 export const questionsApi = {
   // 分类
   getCategoryTree: () =>
@@ -98,4 +136,30 @@ export const questionsApi = {
     request.get<QuestionMedia>(`/questions/media/${mediaId}`),
   removeMedia: (mediaId: string) =>
     request.delete(`/questions/media/${mediaId}`),
+
+  // AI 导入
+  aiImportUpload: (files: File[], model?: string) => {
+    const formData = new FormData()
+    files.forEach(file => formData.append('files', file))
+    if (model) formData.append('model', model)
+    return request.post('/questions/ai-import/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+  // 获取可用的 AI 模型列表（用于 AI 导入）
+  getAvailableModels: () => request.get<AiModel[]>('/questions/ai-import/models'),
+  getAiImportTasks: (page?: number, pageSize?: number) =>
+    request.get('/questions/ai-import/tasks', { params: { page, pageSize } }),
+  getAiImportTaskDetail: (id: string) =>
+    request.get<AiImportTask & { items: AiImportItem[] }>(`/questions/ai-import/tasks/${id}`),
+  confirmAiImport: (taskId: string, itemIds: string[], categoryId: string, difficulty?: string) =>
+    request.post(`/questions/ai-import/tasks/${taskId}/confirm`, {
+      itemIds,
+      categoryId,
+      difficulty,
+    }),
+  skipAiImportItems: (taskId: string, itemIds: string[]) =>
+    request.post(`/questions/ai-import/tasks/${taskId}/skip`, { itemIds }),
+  deleteAiImportTask: (id: string) =>
+    request.delete(`/questions/ai-import/tasks/${id}`),
 }

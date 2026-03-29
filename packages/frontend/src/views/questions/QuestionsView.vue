@@ -55,6 +55,7 @@
           <div class="right">
             <el-button type="primary" :icon="Plus" @click="openCreate">新增题目</el-button>
             <el-button :icon="Upload" @click="importDialogVisible = true">批量导入</el-button>
+            <el-button type="success" :icon="Upload" @click="aiImportDialogVisible = true">AI 智能导入</el-button>
             <el-button :icon="Download" @click="handleExport">导出 Excel</el-button>
             <el-button
               type="danger"
@@ -409,14 +410,255 @@
         </ul>
       </div>
     </el-dialog>
+
+    <!-- AI 智能导入弹窗 -->
+    <el-dialog v-model="aiImportDialogVisible" title="AI 智能导入题目" width="700px" @close="resetAiImportForm">
+      <div class="ai-import-tips">
+        <p>支持格式：Word (.docx) / PDF / 图片 (JPG/PNG)</p>
+        <p class="tip-note">AI 自动识别题目并结构化，识别结果需人工校对后入库</p>
+      </div>
+
+      <!-- 模型选择 -->
+      <el-form label-width="100px">
+        <el-form-item label="大模型选择">
+          <el-select v-model="aiImportModel" style="width:100%" filterable>
+            <el-option
+              v-for="m in availableModels"
+              :key="m.id"
+              :label="m.name"
+              :value="m.modelId"
+            >
+              <span style="float:left">{{ m.name }}</span>
+              <span style="float:right;color:#8492a6;font-size:12px;margin-left:8px">
+                {{ m.provider?.name }}
+              </span>
+            </el-option>
+          </el-select>
+          <div style="color:#909399;font-size:12px;margin-top:4px">
+            💡 模型列表来自 AI 平台管理，请选择适合的模型进行题目识别
+          </div>
+        </el-form-item>
+      </el-form>
+
+      <!-- 文件上传区域 -->
+      <el-upload
+        ref="aiUploadRef"
+        drag
+        :http-request="handleAiFileUpload"
+        :before-upload="beforeAiUpload"
+        :on-change="handleAiFileChange"
+        :show-file-list="false"
+        :auto-upload="false"
+        multiple
+        accept=".docx,.pdf,.jpg,.jpeg,.png"
+        class="ai-upload"
+      >
+        <el-icon class="el-icon--upload"><Upload-Filled /></el-icon>
+        <div class="el-upload__text">
+          拖拽文件到此处或<em>点击上传</em>
+        </div>
+        <template #tip>
+          <div class="el-upload__tip">
+            支持多文件同时上传，单个文件最大 50MB
+          </div>
+        </template>
+      </el-upload>
+
+      <!-- 已选文件列表 -->
+      <div v-if="aiImportFiles.length" class="ai-file-list">
+        <div v-for="(file, idx) in aiImportFiles" :key="file.uid || idx" class="ai-file-item">
+          <el-icon><Document /></el-icon>
+          <span class="file-name">{{ file.name }}</span>
+          <span class="file-size">{{ formatFileSize(file.size || 0) }}</span>
+          <el-tag v-if="file.status === 'ready'" size="small" type="success">就绪</el-tag>
+          <el-button link type="danger" :icon="Delete" @click="removeAiFile(idx)" />
+        </div>
+      </div>
+
+      <!-- 目标分类 -->
+      <el-form label-width="100px" style="margin-top:16px">
+        <el-form-item label="目标分类">
+          <el-select v-model="aiImportCategoryId" clearable filterable style="width:100%">
+            <el-option
+              v-for="cat in categoryList"
+              :key="cat.id"
+              :label="cat.name"
+              :value="cat.id"
+            />
+          </el-select>
+          <div style="color:#909399;font-size:12px;margin-top:4px">也可在校对时选择分类</div>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="aiImportDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="aiImporting" :disabled="aiImportFiles.length === 0" @click="startAiImport">
+          开始识别
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- AI 识别进度弹窗 -->
+    <el-dialog v-model="aiProgressDialogVisible" title="AI 识别中..." width="600px" :close-on-click-modal="false" :show-close="false">
+      <div class="ai-progress-content">
+        <el-progress :percentage="aiProgress" :status="aiProgressStatus" />
+        <p class="progress-text">{{ progressText }}</p>
+        <div class="progress-detail">
+          <div v-if="aiTaskStatus === 'processing'" class="processing-animation">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>AI 正在识别题目，请稍候...</span>
+          </div>
+          <div v-else-if="aiTaskStatus === 'completed'" class="completed-info">
+            <el-icon color="#67C23A"><Circle-Check /></el-icon>
+            <span>识别完成！共识别 {{ aiTotalCount }} 道题目</span>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button v-if="aiTaskStatus === 'completed'" type="primary" @click="openAiReview">进入校对</el-button>
+        <el-button v-else type="info" @click="aiProgressDialogVisible = false">后台处理</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- AI 校对确认弹窗 -->
+    <el-dialog v-model="aiReviewDialogVisible" title="校对确认" width="900px" :close-on-click-modal="false">
+      <div class="ai-review-header">
+        <span>识别完成：共 {{ aiImportItems.length }} 题 | 已校对：{{ reviewedCount }}/{{ aiImportItems.length }} | 待确认</span>
+        <div class="header-actions">
+          <el-select v-model="aiImportCategoryId" placeholder="目标分类" style="width:150px" filterable>
+            <el-option
+              v-for="cat in categoryList"
+              :key="cat.id"
+              :label="cat.name"
+              :value="cat.id"
+            />
+          </el-select>
+          <el-select v-model="aiImportDifficulty" placeholder="统一难度" style="width:100px">
+            <el-option label="易" value="EASY" />
+            <el-option label="中" value="MEDIUM" />
+            <el-option label="难" value="HARD" />
+          </el-select>
+          <el-checkbox v-model="showUnreviewedOnly">仅显示未校对</el-checkbox>
+        </div>
+      </div>
+
+      <!-- 重复题目警告 -->
+      <el-alert v-if="duplicateCount > 0" type="warning" show-icon :closable="false" style="margin-bottom:12px">
+        <template #title>
+          发现 {{ duplicateCount }} 道重复题目，已自动跳过
+        </template>
+      </el-alert>
+
+      <!-- 题目列表 -->
+      <div class="ai-items-list">
+        <div
+          v-for="item in filteredAiItems"
+          :key="item.id"
+          class="ai-item"
+          :class="{ 'is-duplicate': item.isDuplicate, 'is-error': item.errorMessage }"
+        >
+          <div class="item-header">
+            <el-checkbox v-model="item.selected" :disabled="item.isDuplicate || !!item.errorMessage" />
+            <el-tag :type="getTypeTag(item.questionType)" size="small">{{ getTypeLabel(item.questionType) }}</el-tag>
+            <span v-if="item.isDuplicate" class="duplicate-warning">
+              ⚠️ 发现相似题目（相似度 {{ (item.similarity * 100).toFixed(0) }}%）
+            </span>
+            <span v-if="item.errorMessage" class="error-message">⚠️ {{ item.errorMessage }}</span>
+          </div>
+          <div class="item-content">
+            <strong>题目：</strong>{{ item.content }}
+          </div>
+          <div v-if="item.options?.length" class="item-options">
+            <strong>选项：</strong>
+            <span v-for="opt in item.options" :key="opt.label" class="option" :class="{ correct: opt.isCorrect }">
+              {{ opt.label }}. {{ opt.content }}{{ opt.isCorrect ? ' ✓' : '' }}
+            </span>
+          </div>
+          <div class="item-answer">
+            <strong>答案：</strong>{{ item.answer }}
+            <span v-if="!validateAnswer(item.questionType, item.answer)" class="answer-error">⚠️ 答案格式错误</span>
+          </div>
+          <div v-if="item.explanation" class="item-explanation">
+            <strong>解析：</strong>{{ item.explanation }}
+          </div>
+          <div class="item-actions">
+            <el-button link type="primary" size="small" @click="editAiItem(item)">编辑</el-button>
+            <el-button link type="danger" size="small" @click="skipAiItem(item)">跳过</el-button>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="aiReviewDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="aiConfirming" @click="confirmAiImport">
+          确认导入选中的 ({{ selectedAiItemCount }})
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- AI 题目编辑弹窗 -->
+    <el-dialog v-model="aiEditDialogVisible" title="编辑题目" width="700px">
+      <el-form :model="aiEditingItem" label-width="80px">
+        <el-form-item label="题型">
+          <el-select v-model="aiEditingItem.questionType" style="width:100%">
+            <el-option label="单选题" value="SINGLE" />
+            <el-option label="多选题" value="MULTIPLE" />
+            <el-option label="判断题" value="JUDGE" />
+            <el-option label="填空题" value="FILL" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="题目">
+          <el-input v-model="aiEditingItem.content" type="textarea" :rows="3" />
+        </el-form-item>
+        <!-- 选项编辑（选择题/判断题） -->
+        <el-form-item v-if="aiEditingItem.questionType !== 'FILL'" label="选项">
+          <div v-if="aiEditingItem.questionType === 'JUDGE'" class="judge-options-edit">
+            <el-radio-group v-model="aiEditingItem.correctAnswer">
+              <el-radio value="A">A. 正确</el-radio>
+              <el-radio value="B">B. 错误</el-radio>
+            </el-radio-group>
+          </div>
+          <div v-else class="options-edit-list">
+            <div v-for="(opt, idx) in aiEditingItem.options" :key="idx" class="option-edit-item">
+              <el-tag size="small">{{ opt.label }}</el-tag>
+              <el-input v-model="opt.content" style="flex:1;margin:0 8px" placeholder="选项内容" />
+              <el-checkbox v-model="opt.isCorrect">正确</el-checkbox>
+              <el-button link type="danger" :disabled="aiEditingItem.options.length <= 2" @click="removeAiOption(idx)">
+                <el-icon><Delete /></el-icon>
+              </el-button>
+            </div>
+            <el-button link type="primary" size="small" @click="addAiOption">
+              <el-icon><Plus /></el-icon> 添加选项
+            </el-button>
+          </div>
+        </el-form-item>
+        <el-form-item label="答案">
+          <el-input v-model="aiEditingItem.answer" placeholder="答案内容（单选/判断：A/B/C/D；多选：ABCD；填空：答案）" />
+        </el-form-item>
+        <el-form-item label="解析">
+          <el-input v-model="aiEditingItem.explanation" type="textarea" :rows="2" />
+        </el-form-item>
+        <el-form-item label="难度">
+          <el-select v-model="aiEditingItem.difficulty" style="width:100%">
+            <el-option label="简单" value="EASY" />
+            <el-option label="中等" value="MEDIUM" />
+            <el-option label="困难" value="HARD" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="aiEditDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveAiEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Edit, Delete, Search, Upload, Download, Select, UploadFilled, Document, VideoPlay, VideoCamera, Headset } from '@element-plus/icons-vue'
-import { questionsApi, type Question, type QuestionCategory, type QuestionMedia } from '@/api/questions'
+import { Plus, Edit, Delete, Search, Upload, Download, Select, UploadFilled, Document, VideoPlay, VideoCamera, Headset, Loading, CircleCheck } from '@element-plus/icons-vue'
+import { questionsApi, type Question, type QuestionCategory, type QuestionMedia, type AiImportItem, type AiModel } from '@/api/questions'
 
 // 富文本编辑器导入（已禁用，代码保留以备恢复）
 // import Editor from '@tinymce/tinymce-vue'
@@ -1061,9 +1303,392 @@ function downloadTemplate() {
   window.URL.revokeObjectURL(url)
 }
 
+// ─── AI 智能导入 ──────────────────────────────────────────
+const aiImportDialogVisible = ref(false)
+const aiProgressDialogVisible = ref(false)
+const aiReviewDialogVisible = ref(false)
+const aiEditDialogVisible = ref(false)
+const aiEditingItem = ref<{
+  id: string
+  questionType: string
+  content: string
+  options: { label: string; content: string; isCorrect: boolean }[]
+  answer: string
+  explanation: string
+  difficulty: string
+  correctAnswer: string
+}>({
+  id: '',
+  questionType: 'SINGLE',
+  content: '',
+  options: [],
+  answer: '',
+  explanation: '',
+  difficulty: 'MEDIUM',
+  correctAnswer: '',
+})
+const aiImporting = ref(false)
+const aiConfirming = ref(false)
+const aiImportModel = ref('')
+const aiImportCategoryId = ref<string>('')
+const aiImportDifficulty = ref<string>('MEDIUM')
+const aiUploadRef = ref()
+const aiImportFiles = ref<any[]>([])
+const aiTaskId = ref<string>('')
+const aiProgress = ref(0)
+const aiProgressStatus = ref<'success' | ''>('')
+const progressText = ref('')
+const aiTaskStatus = ref<'processing' | 'completed'>('processing')
+const aiTotalCount = ref(0)
+const aiImportItems = ref<(AiImportItem & { selected: boolean })[]>([])
+const showUnreviewedOnly = ref(false)
+
+// 可用模型列表
+const availableModels = ref<AiModel[]>([])
+const aiModelsLoading = ref(false)
+
+// 加载可用模型列表
+async function loadAvailableModels() {
+  try {
+    aiModelsLoading.value = true
+    availableModels.value = await questionsApi.getAvailableModels() as any
+    // 默认选择第一个模型
+    if (availableModels.value.length > 0 && !aiImportModel.value) {
+      aiImportModel.value = availableModels.value[0].modelId
+    }
+  } catch (e: any) {
+    console.error('加载模型列表失败:', e)
+  } finally {
+    aiModelsLoading.value = false
+  }
+}
+
+// AI 导入文件改变
+function handleAiFileChange(uploadFile: any) {
+  const rawFile = uploadFile.raw as File
+  if (!rawFile) return
+
+  // 检查文件大小
+  if (rawFile.size > 50 * 1024 * 1024) {
+    ElMessage.error('文件大小不能超过 50MB')
+    return
+  }
+
+  // 检查文件类型
+  const ext = rawFile.name.split('.').pop()?.toLowerCase()
+  const allowedExts = ['docx', 'pdf', 'jpg', 'jpeg', 'png']
+  if (!allowedExts.includes(ext)) {
+    ElMessage.error('仅支持 .docx、.pdf、.jpg、.jpeg、.png 格式')
+    return
+  }
+
+  // 添加到文件列表
+  aiImportFiles.value.push({
+    uid: Date.now() + Math.random(),
+    name: rawFile.name,
+    size: rawFile.size,
+    status: 'ready',
+    raw: rawFile,
+  })
+
+  // 清除上传组件
+  if (aiUploadRef.value) {
+    aiUploadRef.value.clearFiles()
+  }
+
+  ElMessage.success(`已添加：${rawFile.name}`)
+}
+
+function handleAiFileUpload(file: any) {
+  handleAiFileChange(file)
+}
+
+function beforeAiUpload(file: File) {
+  const ext = file.name.split('.').pop()?.toLowerCase()
+  const isAllowed = ['docx', 'pdf', 'jpg', 'jpeg', 'png'].includes(ext)
+  if (!isAllowed) {
+    ElMessage.error('仅支持 .docx、.pdf、.jpg、.jpeg、.png 格式')
+  }
+  const isLt50M = file.size / 1024 / 1024 < 50
+  if (!isLt50M) {
+    ElMessage.error('文件大小不能超过 50MB')
+  }
+  return isAllowed && isLt50M
+}
+
+function removeAiFile(idx: number) {
+  aiImportFiles.value.splice(idx, 1)
+}
+
+function resetAiImportForm() {
+  aiImportFiles.value = []
+  aiTaskId.value = ''
+  aiProgress.value = 0
+  aiImportItems.value = []
+  aiProgressDialogVisible.value = false
+  aiReviewDialogVisible.value = false
+  if (aiUploadRef.value) {
+    aiUploadRef.value.clearFiles()
+  }
+  // 重置时重新加载模型列表
+  loadAvailableModels()
+}
+
+async function startAiImport() {
+  if (aiImportFiles.value.length === 0) {
+    ElMessage.warning('请选择文件')
+    return
+  }
+
+  aiImporting.value = true
+  try {
+    const files = aiImportFiles.value.map(f => f.raw as File)
+    // 传递选中的模型 ID（即 AiModel.modelId 字段，火山的 EP 值）
+    const res = await questionsApi.aiImportUpload(files, aiImportModel.value) as any
+    aiTaskId.value = res.taskId
+
+    // 打开进度弹窗
+    aiProgressDialogVisible.value = true
+    progressText.value = '正在上传文件...'
+    aiProgress.value = 30
+
+    // 轮询任务状态
+    pollTaskStatus()
+  } catch (e: any) {
+    ElMessage.error(e.message || 'AI 识别失败')
+  } finally {
+    aiImporting.value = false
+  }
+}
+
+let pollTimer: NodeJS.Timeout | null = null
+
+async function pollTaskStatus() {
+  if (pollTimer) clearInterval(pollTimer)
+
+  pollTimer = setInterval(async () => {
+    try {
+      const res = await questionsApi.getAiImportTaskDetail(aiTaskId.value) as any
+      aiProgress.value = res.status === 'completed' ? 100 : 60
+      aiTotalCount.value = res.totalCount
+
+      if (res.status === 'completed') {
+        aiTaskStatus.value = 'completed'
+        aiProgressStatus.value = 'success'
+        progressText.value = '识别完成！'
+        aiImportItems.value = res.items.map((item: AiImportItem) => ({
+          ...item,
+          selected: !item.isDuplicate && !item.errorMessage,
+        }))
+        if (pollTimer) {
+          clearInterval(pollTimer)
+          pollTimer = null
+        }
+      } else {
+        progressText.value = 'AI 正在识别题目，请稍候...'
+      }
+    } catch (e) {
+      console.error('轮询任务状态失败:', e)
+    }
+  }, 2000)
+}
+
+function openAiReview() {
+  aiProgressDialogVisible.value = false
+  aiReviewDialogVisible.value = true
+}
+
+// 获取题型标签
+function getTypeTag(type: string) {
+  const map: Record<string, string> = {
+    SINGLE: '',
+    MULTIPLE: 'warning',
+    JUDGE: 'success',
+    FILL: 'info',
+  }
+  return map[type] || ''
+}
+
+// 获取题型标签文字
+function getTypeLabel(type: string) {
+  const map: Record<string, string> = {
+    SINGLE: '单选题',
+    MULTIPLE: '多选题',
+    JUDGE: '判断题',
+    FILL: '填空题',
+  }
+  return map[type] || type
+}
+
+// 验证答案格式
+function validateAnswer(type: string, answer: string): boolean {
+  if (!answer) return false
+  const trimmed = answer.trim()
+
+  if (type === 'SINGLE') {
+    return /^[A-D]$/.test(trimmed)
+  } else if (type === 'MULTIPLE') {
+    return /^[A-E]{2,5}$/.test(trimmed)
+  } else if (type === 'JUDGE') {
+    return /^[AB]$/.test(trimmed)
+  } else if (type === 'FILL') {
+    return trimmed.length > 0
+  }
+  return true
+}
+
+// 过滤未校对的题目
+const filteredAiItems = computed(() => {
+  if (showUnreviewedOnly.value) {
+    return aiImportItems.value.filter(item => !item.isDuplicate && !item.errorMessage)
+  }
+  return aiImportItems.value
+})
+
+// 重复题目数量
+const duplicateCount = computed(() => {
+  return aiImportItems.value.filter(item => item.isDuplicate).length
+})
+
+// 已校对数量
+const reviewedCount = computed(() => {
+  return aiImportItems.value.filter(item => item.selected || item.isDuplicate || !!item.errorMessage).length
+})
+
+// 选中的题目数量
+const selectedAiItemCount = computed(() => {
+  return aiImportItems.value.filter(item => item.selected).length
+})
+
+function editAiItem(item: AiImportItem) {
+  // 初始化编辑数据
+  let correctAnswer = item.answer
+  // 从选项中提取正确答案
+  if (item.options?.length) {
+    const correctOpts = item.options.filter(o => o.isCorrect)
+    if (correctOpts.length > 0) {
+      correctAnswer = correctOpts.map(o => o.label).join('')
+    }
+  }
+
+  aiEditingItem.value = {
+    id: item.id,
+    questionType: item.questionType,
+    content: item.content,
+    options: item.options ? item.options.map(o => ({ ...o })) : [],
+    answer: item.answer,
+    explanation: item.explanation || '',
+    difficulty: item.difficulty || 'MEDIUM',
+    correctAnswer,
+  }
+  aiEditDialogVisible.value = true
+}
+
+function addAiOption() {
+  const labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+  const idx = aiEditingItem.value.options.length
+  if (idx < labels.length) {
+    aiEditingItem.value.options.push({ label: labels[idx], content: '', isCorrect: false })
+  }
+}
+
+function removeAiOption(idx: number) {
+  aiEditingItem.value.options.splice(idx, 1)
+  // 重新设置 label
+  const labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+  aiEditingItem.value.options.forEach((opt, i) => {
+    opt.label = labels[i]
+  })
+}
+
+function saveAiEdit() {
+  const item = aiImportItems.value.find(i => i.id === aiEditingItem.value.id)
+  if (!item) return
+
+  // 保存题目内容
+  item.content = aiEditingItem.value.content
+  item.questionType = aiEditingItem.value.questionType as any
+  item.explanation = aiEditingItem.value.explanation
+  item.difficulty = aiEditingItem.value.difficulty as any
+
+  // 处理答案和选项
+  if (aiEditingItem.value.questionType === 'FILL') {
+    // 填空题
+    item.answer = aiEditingItem.value.answer
+    item.options = []
+  } else if (aiEditingItem.value.questionType === 'JUDGE') {
+    // 判断题：固定选项
+    item.answer = aiEditingItem.value.correctAnswer
+    item.options = [
+      { label: 'A', content: '正确', isCorrect: aiEditingItem.value.correctAnswer === 'A' },
+      { label: 'B', content: '错误', isCorrect: aiEditingItem.value.correctAnswer === 'B' },
+    ]
+  } else {
+    // 单选/多选
+    item.answer = aiEditingItem.value.answer || aiEditingItem.value.options
+      .filter(o => o.isCorrect)
+      .map(o => o.label)
+      .join('')
+    item.options = aiEditingItem.value.options.map(o => ({ ...o }))
+  }
+
+  aiEditDialogVisible.value = false
+  ElMessage.success('保存成功')
+}
+
+function skipAiItem(item: AiImportItem) {
+  item.selected = false
+  ElMessage.success('已跳过：' + item.content.slice(0, 20) + '...')
+}
+
+async function confirmAiImport() {
+  const selectedItems = aiImportItems.value.filter(item => item.selected)
+  if (selectedItems.length === 0) {
+    ElMessage.warning('请至少选择一道题目')
+    return
+  }
+
+  if (!aiImportCategoryId.value) {
+    ElMessage.warning('请选择目标分类')
+    return
+  }
+
+  // 校验答案格式
+  const invalidItems = selectedItems.filter(item => !validateAnswer(item.questionType, item.answer))
+  if (invalidItems.length > 0) {
+    ElMessageBox.alert(
+      `发现 ${invalidItems.length} 道题目的答案格式不正确，请先修正`,
+      '答案格式错误',
+      { type: 'warning' }
+    )
+    return
+  }
+
+  aiConfirming.value = true
+  try {
+    const itemIds = selectedItems.map(item => item.id)
+    const res = await questionsApi.confirmAiImport(
+      aiTaskId.value,
+      itemIds,
+      aiImportCategoryId.value,
+      aiImportDifficulty.value || undefined,
+    ) as any
+
+    ElMessage.success(`导入成功：${res.success} 道题目`)
+    aiReviewDialogVisible.value = false
+    aiImportDialogVisible.value = false
+    await loadQuestions()
+  } catch (e: any) {
+    ElMessage.error(e.message || '导入失败')
+  } finally {
+    aiConfirming.value = false
+  }
+}
+
 onMounted(() => {
   loadCategories()
   loadQuestions()
+  loadAvailableModels()
 })
 </script>
 
@@ -1301,5 +1926,210 @@ onMounted(() => {
   gap: 8px;
   font-size: 12px;
   color: #909399;
+}
+
+/* AI 智能导入样式 */
+.ai-import-tips {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f0f9ff;
+  border-radius: 4px;
+  border: 1px solid #d9ecff;
+}
+.ai-import-tips p {
+  margin: 4px 0;
+  font-size: 13px;
+  color: #606266;
+}
+.ai-import-tips .tip-note {
+  font-size: 12px;
+  color: #909399;
+}
+
+.ai-upload .el-upload-dragger {
+  padding: 40px 20px;
+}
+
+.ai-file-list {
+  margin-top: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.ai-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+.ai-file-item .file-name {
+  flex: 1;
+  font-size: 13px;
+  color: #606266;
+}
+.ai-file-item .file-size {
+  font-size: 12px;
+  color: #909399;
+  margin: 0 8px;
+}
+
+/* AI 编辑弹窗 */
+.options-edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.option-edit-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.judge-options-edit {
+  padding: 12px 0;
+}
+
+/* AI 进度弹窗 */
+.ai-progress-content {
+  text-align: center;
+  padding: 20px;
+}
+.progress-text {
+  margin: 16px 0 8px;
+  font-size: 14px;
+  color: #606266;
+}
+.progress-detail {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+.processing-animation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #409eff;
+}
+.completed-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #67c23a;
+  font-size: 14px;
+}
+
+/* AI 校对弹窗 */
+.ai-review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+.ai-review-header .header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.ai-items-list {
+  max-height: 500px;
+  overflow-y: auto;
+}
+.ai-item {
+  padding: 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  background: #fff;
+}
+.ai-item.is-duplicate {
+  border-color: #e6a23c;
+  background: #fdf6ec;
+}
+.ai-item.is-error {
+  border-color: #f56c6c;
+  background: #fef0f0;
+}
+.item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.duplicate-warning {
+  font-size: 12px;
+  color: #e6a23c;
+}
+.error-message {
+  font-size: 12px;
+  color: #f56c6c;
+}
+.item-content {
+  font-size: 13px;
+  color: #303133;
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+.item-content strong {
+  color: #909399;
+  margin-right: 4px;
+}
+.item-options {
+  font-size: 13px;
+  color: #606266;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+.item-options strong {
+  color: #909399;
+  margin-right: 4px;
+}
+.item-options .option {
+  display: inline-block;
+  margin-right: 12px;
+}
+.item-options .option.correct {
+  color: #67c23a;
+  font-weight: 500;
+}
+.item-answer {
+  font-size: 13px;
+  color: #606266;
+  margin-bottom: 8px;
+}
+.item-answer strong {
+  color: #909399;
+  margin-right: 4px;
+}
+.item-answer .answer-error {
+  color: #f56c6c;
+  margin-left: 8px;
+  font-size: 12px;
+}
+.item-explanation {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: #fafafa;
+  border-radius: 4px;
+}
+.item-explanation strong {
+  color: #909399;
+  margin-right: 4px;
+}
+.item-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 </style>
