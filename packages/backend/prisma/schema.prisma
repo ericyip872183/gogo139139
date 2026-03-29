@@ -35,6 +35,7 @@ model Tenant {
   papers              Paper[]
   exams               Exam[]
   scoreTables         ScoreTable[]
+  aiImportTasks       AiImportTask[]
 
   @@map("tenants")
 }
@@ -75,6 +76,7 @@ model User {
   scores           Score[]
   judgeRecords     ScoreRecord[] @relation("JudgeRecords")
   targetRecords    ScoreRecord[] @relation("TargetRecords")
+  aiImportTasks    AiImportTask[]
 
   @@unique([tenantId, username])
   @@index([tenantId])
@@ -588,6 +590,58 @@ model AiAlert {
 
   @@index([tenantId, status])
   @@map("ai_alerts")
+}
+
+// ─── AI 导入题库（Sprint 扩展）─────────────────────────────
+
+// AI 导入任务记录
+model AiImportTask {
+  id           String   @id @default(cuid())
+  tenantId     String
+  userId       String
+  fileType     String   @db.VarChar(50)  // word / pdf / image
+  fileName     String   @db.VarChar(200)
+  fileUrl      String   @db.VarChar(500)
+  model        String   @db.VarChar(100) @default("doubao-seed-2.0-lite")
+  status       String   @db.VarChar(20)  @default("pending")  // pending / processing / completed / failed
+  totalCount   Int      @default(0)
+  successCount Int      @default(0)
+  errorCount   Int      @default(0)
+  parsedData   Json?
+  errorMessage String?  @db.Text
+  createdAt    DateTime @default(now())
+  completedAt  DateTime?
+
+  // 关联
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
+  items        AiImportItem[]
+
+  @@index([tenantId, userId])
+  @@index([status])
+  @@map("ai_import_tasks")
+}
+
+// AI 导入题目详情（校对用）
+model AiImportItem {
+  id           String   @id @default(cuid())
+  taskId       String
+  questionType String   @db.VarChar(20)  // SINGLE / MULTIPLE / JUDGE / FILL
+  content      String   @db.Text
+  options      Json?    // { label: 'A', content: '...', isCorrect: true/false }[]
+  answer       String   @db.VarChar(100)
+  explanation  String?  @db.Text
+  difficulty   String   @db.VarChar(20)  @default("MEDIUM")
+  status       String   @db.VarChar(20)  @default("pending")  // pending / confirmed / skipped / imported
+  importedId   String?  @db.VarChar(191)
+  errorMessage String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  // 关联
+  task         AiImportTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, status])
+  @@map("ai_import_items")
 }
 
 // ─── 超管操作日志（Admin）─────────────────────────────

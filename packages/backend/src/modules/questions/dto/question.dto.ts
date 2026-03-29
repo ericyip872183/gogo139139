@@ -233,3 +233,7 @@ export class UpdateQuestionWithMediaDto extends UpdateQuestionDto {
   @IsOptional()
   mediaItems?: QuestionMediaDto[]
 }
+
+// ─── AI 导入 DTO（导出用）──────────────────────────────────
+
+export * from './ai-import.dto'

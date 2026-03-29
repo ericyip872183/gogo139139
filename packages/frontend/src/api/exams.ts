@@ -49,4 +49,5 @@ export const examsApi = {
     request.post(`/exams/${id}/participants`, data),
   removeParticipant: (id: string, userId: string) =>
     request.delete(`/exams/${id}/participants/${userId}`),
+  remove: (id: string) => request.delete(`/exams/${id}`),
 }

@@ -58,37 +58,4 @@ export class AiController {
   ) {
     return this.service.createRecharge(user.tenantId, user.id, dto.amount)
   }
-
-  /**
-   * 获取 AI 配置（仅超管）
-   */
-  @Get('config')
-  @Roles('SUPER_ADMIN')
-  getConfig(@CurrentUser() user: { tenantId: string }) {
-    return this.service.getConfig(user.tenantId)
-  }
-
-  /**
-   * 保存 AI 配置（仅超管）
-   */
-  @Post('config')
-  @Roles('SUPER_ADMIN')
-  async saveConfig(
-    @CurrentUser() user: { tenantId: string; role: string },
-    @Body() config: { apiKey?: string; apiSecret?: string; endpoint?: string; model?: string; maxTokens?: number; isEnabled?: boolean; systemPrompt?: string },
-  ) {
-    // 超管保存本机构配置或更新平台默认配置
-    const targetTenantId = user.role === 'SUPER_ADMIN' ? 'platform' : user.tenantId
-
-    // 查找现有配置
-    const existing = await this.service.getConfig(targetTenantId)
-
-    if (existing) {
-      // 更新配置
-      return this.service.updateConfig(targetTenantId, config)
-    } else {
-      // 创建新配置
-      return this.service.createConfig(targetTenantId, config)
-    }
-  }
 }

@@ -2,71 +2,78 @@ import { Injectable, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../../prisma/prisma.service'
 import { ChatDto, OcrDto } from './dto/ai.dto'
 
+/**
+ * AI 服务（机构级别）
+ * 从 AiProvider 和 AiModel 表读取配置，替代旧的 AiConfig 表
+ */
 @Injectable()
 export class AiService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * 获取机构 AI 配置
+   * 获取机构的 AI 服务商配置
+   * 优先使用机构配置的默认服务商，否则返回第一个启用的服务商
    */
-  async getConfig(tenantId: string) {
-    const config = await this.prisma.aiConfig.findFirst({ where: { tenantId } })
-    if (!config) {
-      // 返回平台默认配置（超管在后台配置）
-      return this.prisma.aiConfig.findFirst({ where: { tenantId: { equals: 'platform' } } })
+  private async getProvider(tenantId: string) {
+    // 尝试获取机构配置的默认服务商
+    const tenantModel = await this.prisma.tenantAiModel.findFirst({
+      where: { tenantId, scene: 'general', isDefault: true, isEnabled: true },
+      include: { model: { include: { provider: true } } },
+    })
+
+    if (tenantModel && tenantModel.model.provider) {
+      return tenantModel.model.provider
     }
-    return config
-  }
 
-  /**
-   * 创建 AI 配置
-   */
-  async createConfig(tenantId: string, config: any) {
-    return this.prisma.aiConfig.create({
-      data: {
-        tenantId,
-        apiKey: config.apiKey || '',
-        apiSecret: config.apiSecret,
-        endpoint: config.endpoint || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
-        model: config.model || 'doubao-lite-4k',
-        maxTokens: config.maxTokens || 2000,
-        isEnabled: config.isEnabled !== false,
-        systemPrompt: config.systemPrompt,
-      },
+    // 返回第一个启用的服务商
+    const provider = await this.prisma.aiProvider.findFirst({
+      where: { isEnabled: true },
+      include: { models: { where: { isEnabled: true }, take: 1 } },
     })
+
+    if (!provider) {
+      throw new BadRequestException('未配置 AI 服务商，请联系管理员')
+    }
+
+    return provider
   }
 
   /**
-   * 更新 AI 配置
+   * 获取机构的模型配置
    */
-  async updateConfig(tenantId: string, config: any) {
-    return this.prisma.aiConfig.update({
-      where: { tenantId },
-      data: {
-        apiKey: config.apiKey !== undefined ? config.apiKey : undefined,
-        apiSecret: config.apiSecret !== undefined ? config.apiSecret : undefined,
-        endpoint: config.endpoint !== undefined ? config.endpoint : undefined,
-        model: config.model !== undefined ? config.model : undefined,
-        maxTokens: config.maxTokens !== undefined ? config.maxTokens : undefined,
-        isEnabled: config.isEnabled !== undefined ? config.isEnabled : undefined,
-        systemPrompt: config.systemPrompt !== undefined ? config.systemPrompt : undefined,
-      },
+  private async getModel(tenantId: string, providerId: string, scene?: string) {
+    // 优先查询机构场景配置
+    const tenantModel = await this.prisma.tenantAiModel.findFirst({
+      where: { tenantId, scene, isDefault: true, isEnabled: true },
+      include: { model: true },
     })
+
+    if (tenantModel && tenantModel.model) {
+      return tenantModel.model
+    }
+
+    // 返回服务商的第一个启用模型
+    const aiModel = await this.prisma.aiModel.findFirst({
+      where: { providerId, isEnabled: true },
+    })
+
+    if (!aiModel) {
+      throw new BadRequestException('未配置可用模型')
+    }
+
+    return aiModel
   }
 
   /**
-   * 对话接口（模拟病人）- 火山引擎豆包大模型
+   * 对话接口（模拟病人）- 从数据库读取配置
    */
   async chat(tenantId: string, userId: string, dto: ChatDto) {
-    const config = await this.getConfig(tenantId)
-    if (!config || !config.isEnabled) {
-      throw new BadRequestException('AI 功能未启用')
-    }
-
+    const provider = await this.getProvider(tenantId)
+    const model = await this.getModel(tenantId, provider.id, 'mock_patient')
     const startTime = Date.now()
 
     // 构建提示词（模拟病人场景）
-    const systemPrompt = config.systemPrompt || `你是一名标准化病人（SP），正在配合医学生进行问诊练习。
+    const systemPrompt = `你是一名标准化病人（SP），正在配合医学生进行问诊练习。
 - 你是一位 45 岁左右的中年人
 - 主诉：反复胃脘部隐痛 3 个月
 - 现病史：3 个月前因饮食不规律出现胃脘部隐痛，喜温喜按，进食后缓解，空腹时加重
@@ -85,24 +92,28 @@ export class AiService {
     }
 
     try {
-      // 调用火山引擎豆包大模型 API
-      const response = await fetch(config.endpoint, {
+      // 调用 AI API
+      const endpoint = provider.baseUrl.endsWith('/chat/completions')
+        ? provider.baseUrl
+        : `${provider.baseUrl}/chat/completions`
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`,
+          'Authorization': `Bearer ${provider.apiKey}`,
         },
         body: JSON.stringify({
-          model: config.model || 'doubao-pro-4k',
+          model: model.modelId,
           messages,
           temperature: 0.7,
-          max_tokens: config.maxTokens || 2000,
+          max_tokens: 2000,
         }),
       })
 
       if (!response.ok) {
         const errorData = await response.text()
-        throw new BadRequestException(`火山引擎 API 错误：${response.status} - ${errorData}`)
+        throw new BadRequestException(`AI API 错误：${response.status} - ${errorData}`)
       }
 
       const data = await response.json()
@@ -110,20 +121,21 @@ export class AiService {
 
       const duration = Date.now() - startTime
       const tokensUsed = data.usage?.total_tokens || 100
-      // 根据模型类型计算成本（doubao-pro-4k: 输入 0.0008/千，输出 0.002/千）
-      const cost = (tokensUsed / 1000) * 0.002
+      const cost = (tokensUsed / 1000) * (model.outputPrice?.toNumber() || 0.002)
 
       // 记录使用日志
       await this.prisma.aiUsage.create({
         data: {
           tenantId,
           userId,
-          providerId: 'doubao',
-          modelId: config.model || 'doubao-lite-4k',
+          providerId: provider.id,
+          modelId: model.id,
           module: 'mock_patient',
           action: 'chat',
           tokensUsed,
           cost,
+          inputTokens: data.usage?.prompt_tokens || 0,
+          outputTokens: data.usage?.completion_tokens || 0,
           request: JSON.stringify({ messages }),
           response: JSON.stringify({ content: aiMessage }),
           duration,
@@ -134,6 +146,8 @@ export class AiService {
       return {
         message: aiMessage,
         tokens: tokensUsed,
+        cost,
+        duration,
       }
     } catch (error: any) {
       // 记录失败日志
@@ -141,12 +155,14 @@ export class AiService {
         data: {
           tenantId,
           userId,
-          providerId: 'doubao',
-          modelId: config.model || 'doubao-lite-4k',
+          providerId: provider.id,
+          modelId: model.id,
           module: 'mock_patient',
           action: 'chat',
           tokensUsed: 0,
           cost: 0,
+          inputTokens: 0,
+          outputTokens: 0,
           request: JSON.stringify({ messages }),
           response: JSON.stringify({ error: error.message }),
           duration: Date.now() - startTime,
@@ -159,14 +175,11 @@ export class AiService {
   }
 
   /**
-   * OCR 识别（试题录入）- 火山引擎 OCR API
+   * OCR 识别（试题录入）- 从数据库读取配置
    */
   async ocr(tenantId: string, userId: string, dto: OcrDto) {
-    const config = await this.getConfig(tenantId)
-    if (!config || !config.isEnabled) {
-      throw new BadRequestException('AI 功能未启用')
-    }
-
+    const provider = await this.getProvider(tenantId)
+    const model = await this.getModel(tenantId, provider.id, 'ocr')
     const startTime = Date.now()
 
     try {
@@ -188,7 +201,7 @@ export class AiService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`,
+          'Authorization': `Bearer ${provider.apiKey}`,
         },
         body: JSON.stringify({
           image: imageBase64,
@@ -218,12 +231,14 @@ export class AiService {
         data: {
           tenantId,
           userId,
-          providerId: 'doubao',
-          modelId: config.model || 'doubao-lite-4k',
+          providerId: provider.id,
+          modelId: model.id,
           module: 'ocr',
           action: 'ocr',
           tokensUsed,
           cost,
+          inputTokens: 0,
+          outputTokens: 0,
           request: JSON.stringify({ imageUrl: dto.imageUrl }),
           response: JSON.stringify({ text }),
           duration,
@@ -234,6 +249,8 @@ export class AiService {
       return {
         text,
         tokens: tokensUsed,
+        cost,
+        duration,
       }
     } catch (error: any) {
       // 记录失败日志
@@ -241,12 +258,14 @@ export class AiService {
         data: {
           tenantId,
           userId,
-          providerId: 'doubao',
-          modelId: config.model || 'doubao-lite-4k',
+          providerId: provider.id,
+          modelId: model.id,
           module: 'ocr',
           action: 'ocr',
           tokensUsed: 0,
           cost: 0,
+          inputTokens: 0,
+          outputTokens: 0,
           request: JSON.stringify({ imageUrl: dto.imageUrl }),
           response: JSON.stringify({ error: error.message }),
           duration: Date.now() - startTime,

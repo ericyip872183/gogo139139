@@ -12,7 +12,9 @@
     "db:studio": "pnpm --filter backend prisma studio"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@playwright/mcp": "^0.0.68",
+    "concurrently": "^8.2.2",
+    "playwright": "^1.58.2"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

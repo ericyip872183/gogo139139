@@ -142,6 +142,40 @@ export class ExamsService {
     return this.prisma.examParticipant.deleteMany({ where: { examId: id, userId } })
   }
 
+  // 删除考试（无交卷记录时可删除）
+  async remove(tenantId: string, id: string) {
+    const exam = await this._findOrFail(tenantId, id)
+
+    // 检查是否有学生已交卷
+    const submittedCount = await this.prisma.examParticipant.count({
+      where: { examId: id, hasSubmitted: true },
+    })
+
+    // 检查是否有成绩记录
+    const scoreCount = await this.prisma.score.count({
+      where: { examId: id },
+    })
+
+    if (submittedCount > 0 || scoreCount > 0) {
+      throw new BadRequestException({
+        code: 'EXAM_HAS_SUBMISSIONS',
+        message: `该考试已有 ${submittedCount} 名学生交卷，存在 ${scoreCount} 条成绩记录，无法删除`,
+        submittedCount,
+        scoreCount,
+      })
+    }
+
+    // 删除考试（级联删除参与者和答题记录）
+    await this.prisma.$transaction(async (tx) => {
+      // 删除参与者记录
+      await tx.examParticipant.deleteMany({ where: { examId: id } })
+      // 删除考试记录（会自动级联删除答题记录）
+      await tx.exam.delete({ where: { id } })
+    })
+
+    return { success: true }
+  }
+
   async getParticipants(tenantId: string, id: string) {
     await this._findOrFail(tenantId, id)
     return this.prisma.examParticipant.findMany({

@@ -29,6 +29,39 @@ const setupRequestInterceptor = (req: typeof request) => {
       }
       config.params = cleaned
     }
+
+    // ━━━ AI 导入调试日志：在 F12 显示发送给豆包的请求内容 ━━━
+    if (config.url?.includes('/ai-import/upload')) {
+      console.log('\n' + '='.repeat(80))
+      console.log('【AI 导入 - 发送给豆包的请求】')
+      console.log('时间:', new Date().toLocaleString('zh-CN'))
+      console.log('接口:', config.url)
+      console.log('方法:', config.method?.toUpperCase())
+
+      // 如果是 FormData，显示文件信息
+      if (config.data instanceof FormData) {
+        const files: File[] = []
+        const otherFields: Record<string, any> = {}
+        config.data.forEach((value, key) => {
+          if (value instanceof File) {
+            files.push({
+              name: value.name,
+              size: value.size,
+              type: value.type,
+            })
+          } else {
+            otherFields[key] = value
+          }
+        })
+        console.log('文件信息:', files)
+        console.log('其他字段:', otherFields)
+      } else {
+        console.log('请求体:', config.data)
+      }
+
+      console.log('='.repeat(80) + '\n')
+    }
+
     return config
   })
   return req

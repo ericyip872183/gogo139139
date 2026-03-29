@@ -299,10 +299,51 @@ async function load() {
 }
 
 async function handleRemove(row: Paper) {
-  await ElMessageBox.confirm(`确定删除试卷「${row.title}」吗？`, '提示', { type: 'warning' })
-  await papersApi.remove(row.id)
-  ElMessage.success('删除成功')
-  load()
+  try {
+    await ElMessageBox.confirm(`确定删除试卷「${row.title}」吗？`, '提示', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消'
+    })
+
+    await papersApi.remove(row.id)
+    ElMessage.success('删除成功')
+    load()
+  } catch (e: any) {
+    // 如果是"被引用"错误，显示考试列表
+    if (e.response?.data?.exams) {
+      const examList = e.response.data.exams
+
+      // 构建提示内容
+      let content = `<div style="line-height:1.8;max-height:400px;overflow-y:auto">`
+      content += `<p style="color:#f56c6c;margin-bottom:12px">该试卷被以下 ${examList.length} 个考试引用，无法删除：</p>`
+      content += `<ul style="padding-left:20px;margin:0">`
+      for (const exam of examList) {
+        const statusColor = { DRAFT: '#909399', PUBLISHED: '#409EFF', ENDED: '#67C23A', CANCELLED: '#F56C6C' }[exam.status] || '#909399'
+        content += `<li style="margin:10px 0;padding:8px;background:#f5f7fa;border-radius:4px">`
+        content += `<div style="margin-bottom:6px"><b>${exam.title}</b></div>`
+        content += `<div style="font-size:13px;color:#606266">`
+        content += `<span style="display:inline-block;padding:2px 8px;background:${statusColor}20;color:${statusColor};border-radius:3px;margin-right:8px">${exam.status}</span>`
+        content += `<span>考生：${exam.participantCount}人</span>`
+        if (exam.submittedCount > 0) {
+          content += `<span style="margin-left:8px;color:#f56c6c">已交卷：${exam.submittedCount}人</span>`
+        }
+        content += `</div>`
+        content += `</li>`
+      }
+      content += `</ul>`
+      content += `<p style="margin-top:16px;padding:10px;background:#ecf5ff;border-radius:4px;color:#409EFF;font-size:13px">`
+      content += `💡 提示：请先删除或修改上述考试后，再删除该试卷`
+      content += `</p>`
+      content += `</div>`
+
+      ElMessageBox.alert(content, '无法删除试卷', {
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: '我知道了',
+        showClose: true,
+      })
+    }
+  }
 }
 
 const formatDate = (s: string) => s ? new Date(s).toLocaleString('zh-CN') : ''

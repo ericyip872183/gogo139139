@@ -81,4 +81,10 @@ export class ExamsController {
   ) {
     return this.service.removeParticipant(user.tenantId, id, userId)
   }
+
+  @Delete(':id')
+  @Roles('TEACHER', 'TENANT_ADMIN', 'CLASS_ADMIN', 'SUPER_ADMIN')
+  remove(@CurrentUser() user: { tenantId: string }, @Param('id') id: string) {
+    return this.service.remove(user.tenantId, id)
+  }
 }

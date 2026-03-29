@@ -27,11 +27,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3000',  // 本地开发用 localhost
         changeOrigin: true,
       },
       '/uploads': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3000',  // 本地开发用 localhost
         changeOrigin: true,
       },
     },

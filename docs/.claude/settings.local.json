@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find ../packages/backend/src/modules/questions -type f -name *.ts)",
+      "Bash(curl -s http://localhost:3002/api/questions/categories/tree -H \"Authorization: Bearer test\")",
+      "Bash(netstat -ano)",
+      "Bash(findstr :3002)",
+      "Bash(findstr \":3000\")",
+      "Bash(findstr \"LISTENING\")",
+      "Bash(findstr \":5173\")",
+      "Bash(findstr \":3306\")",
+      "Bash(curl -s http://localhost:3000/api/questions/categories/tree)",
+      "Bash(curl:*)",
+      "Bash(node -e \"console.log\\(''测试控制台输出''\\)\")",
+      "Bash(mysql:*)",
+      "Bash(node check-ai-task.js)",
+      "Bash(node:*)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(powershell -Command \"Get-Process node | Stop-Process -Force\")"
+    ]
+  }
+}

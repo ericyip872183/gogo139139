@@ -124,9 +124,35 @@ export class PapersService {
   }
 
   async remove(tenantId: string, id: string) {
-    await this._findOrFail(tenantId, id)
-    const inUse = await this.prisma.exam.count({ where: { paperId: id } })
-    if (inUse > 0) throw new BadRequestException('该试卷已被考试引用，无法删除')
+    const paper = await this._findOrFail(tenantId, id)
+
+    // 查询引用该试卷的所有考试
+    const exams = await this.prisma.exam.findMany({
+      where: { paperId: id, tenantId },
+      include: {
+        participants: {
+          select: {
+            hasSubmitted: true,
+          },
+        },
+      },
+    })
+
+    if (exams.length > 0) {
+      throw new BadRequestException({
+        code: 'PAPER_IN_USE',
+        message: `该试卷被 ${exams.length} 个考试引用，无法删除`,
+        exams: exams.map(e => ({
+          id: e.id,
+          title: e.title,
+          status: e.status,
+          participantCount: e.participants.length,
+          submittedCount: e.participants.filter(p => p.hasSubmitted).length,
+        })),
+      })
+    }
+
+    // 软删除试卷
     return this.prisma.paper.update({ where: { id }, data: { isActive: false } })
   }
 

@@ -29,14 +29,41 @@
       "Bash(findstr \":6379\")",
       "Bash(findstr \"3306\\\\|6379\")",
       "Bash(findstr \"LISTEN\")",
-      "Bash(powershell -Command \"Get-Service | Where-Object {$\\\\_.DisplayName -like ''*mysql*'' -or $\\\\_.DisplayName -like ''*redis*''}\")",
+      "Bash(powershell -Command \"Get-Service | Where-Object {$_.DisplayName -like ''*mysql*'' -or $_.DisplayName -like ''*redis*''}\")",
       "Bash(sc query:*)",
       "Bash(findstr /i \"mysql redis\")",
       "Bash(powershell -Command \"Get-Service -Name ''MySQL*'' , ''Redis*'' 2>&1 | Select-Object Name, Status, DisplayName\")",
       "Bash(powershell -Command \"Stop-Service -Name ''MySQL*'' -Force\")",
       "Bash(pnpm db:migrate)",
       "Bash(docker exec:*)",
-      "Bash(powershell -Command \"Get-Service | Where-Object { $_Status -eq ''Running'' } | Where-Object { \\(Get-Process -Id \\(Get-WmiObject Win32_Service | Where-Object { $_Name -eq $_Name }\\).ProcessId -ErrorAction SilentlyContinue\\) } ; taskkill /PID 19044 /F\")"
+      "Bash(powershell -Command \"Get-Service | Where-Object { $_Status -eq ''Running'' } | Where-Object { \\(Get-Process -Id \\(Get-WmiObject Win32_Service | Where-Object { $_Name -eq $_Name }\\).ProcessId -ErrorAction SilentlyContinue\\) } ; taskkill /PID 19044 /F\")",
+      "Read(//c/tmp/**)",
+      "Bash(curl -s -X POST http://localhost:3000/api/questions/ai-import/upload -H \"Authorization: Bearer $TOKEN\" -F \"files=@c:/项目/panlei/题型说明.pdf\" -F \"model=ep-20260315163053-ns7kz\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/questions/ai-import/upload -H \"Authorization: Bearer $TOKEN\" -F \"files=@node_modules/.pnpm/prisma@5.22.0/node_modules/prisma/build/public/icon-1024.png\" -F \"model=ep-20260315163053-ns7kz\")",
+      "Bash(docker-compose -f docker-compose.dev.yml build --no-cache backend)",
+      "Bash(curl -s -X POST http://localhost:3000/api/questions/ai-import/upload -H \"Authorization: Bearer $TOKEN\" -F \"files=@c:/项目/panlei/题型说明.pdf\" -F \"model=ep-20260311205526-5qkpl\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/auth/login -H \"Content-Type: application/json\" -d '{\"tenantCode\":\"default-tenant\",\"username\":\"admin\",\"password\":\"admin123\"}')",
+      "Bash(curl -s http://localhost:3000/api/auth/tenants/admin123)",
+      "Bash(curl -s -X POST http://localhost:3000/api/questions/ai-import/upload -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjbW4ycWI5NXEwMDAxemsxc2Ryc2E4ZjZuIiwidGVuYW50SWQiOiJkZWZhdWx0LXRlbmFudCIsInJvbGUiOiJTVVBFUl9BRE1JTiIsImlhdCI6MTcxMTYyMzYwMCwiZXhwIjoxNzExNzEwMDAwfQ.X8Z5qKqK9vG8zJ5X5qKqK9vG8zJ5X5qKqK9vG8zJ5X\" -F \"files=@c:/项目/panlei/题型说明.pdf\" -F \"model=doubao-pro-32k\")",
+      "Bash(node -e \"const jwt = require\\(''jsonwebtoken''\\); const token = jwt.sign\\({ sub: ''cmn2qb95q0001zk1sdrsa8f6n'', tenantId: ''default-tenant'', role: ''SUPER_ADMIN'' }, ''test-secret-key-12345678901234567890123456789012''\\); console.log\\(token\\);\")",
+      "Bash(npx -y npx jsonwebtoken@latest)",
+      "Bash(curl -s -X POST http://localhost:3000/api/auth/login -H \"Content-Type: application/json\" -d '{\"tenantCode\":\"zsykdx\",\"username\":\"admin\",\"password\":\"admin123\"}')",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjbW4ycWI5NXEwMDAxemsxc2Ryc2E4ZjZuIiwidGVuYW50SWQiOiJkZWZhdWx0LXRlbmFudCIsInJvbGUiOiJTVVBFUl9BRE1JTiIsImlhdCI6MTc3NDYyODY4OCwiZXhwIjoxNzc1MjMzNDg4fQ.ie8RdDQdG1KEoe_v5xFxPDVJNQxSc8a6kOcHh_GaR84\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/questions/ai-import/upload -H \"Authorization: Bearer $TOKEN\" -F \"files=@c:/项目/panlei/题型说明.pdf\" -F \"model=doubao-pro-32k\")",
+      "Bash(docker stop:*)",
+      "Bash(docker rm:*)",
+      "Bash(grep \"\\\\.md$\")",
+      "Bash(node scripts/export-ai-providers.js)"
+    ],
+    "additionalDirectories": [
+      "c:\\项目\\panlei\\.claude",
+      "c:\\项目\\panlei\\.claude\\memory"
     ]
+  },
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp"]
+    }
   }
 }

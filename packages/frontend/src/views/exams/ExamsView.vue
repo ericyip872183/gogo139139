@@ -33,7 +33,7 @@
         <el-table-column label="参与人数" width="90">
           <template #default="{ row }">{{ row._count?.participants ?? 0 }} 人</template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="openManage(row)">管理</el-button>
             <el-button
@@ -48,6 +48,7 @@
             >取消</el-button>
             <el-button link type="info" size="small" @click="handleClone(row)">克隆</el-button>
             <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="danger" size="small" @click="handleRemove(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -214,6 +215,42 @@ async function handleClone(row: Exam) {
   const newExam = await examsApi.clone(row.id) as any
   ElMessage.success(`克隆成功：${newExam.title}`)
   load()
+}
+
+async function handleRemove(row: Exam) {
+  try {
+    const hasSubmissions = row._count?.participants && row._count.participants > 0
+    const confirmMsg = hasSubmissions
+      ? `确定删除考试「${row.title}」吗？<br/><span style="color:#f56c6c">⚠️ 该考试已有参与者，但无交卷记录，可以删除</span>`
+      : `确定删除考试「${row.title}」吗？`
+
+    await ElMessageBox.confirm(confirmMsg, '提示', {
+      dangerouslyUseHTMLString: true,
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消'
+    })
+
+    await examsApi.remove(row.id)
+    ElMessage.success('删除成功')
+    load()
+  } catch (e: any) {
+    // 如果有交卷记录，显示详细错误信息
+    if (e.response?.data?.submittedCount !== undefined) {
+      const { submittedCount, scoreCount } = e.response.data
+      ElMessageBox.alert(
+        `该考试已有 <b style="color:#f56c6c;font-size:16px">${submittedCount}</b> 名学生交卷，<br/>
+         存在 <b style="color:#f56c6c;font-size:16px">${scoreCount}</b> 条成绩记录，无法删除。<br/><br/>
+         💡 建议：将考试状态改为"取消"而非删除，以保留历史数据`,
+        '无法删除考试',
+        {
+          dangerouslyUseHTMLString: true,
+          confirmButtonText: '我知道了',
+          showClose: true,
+        }
+      )
+    }
+  }
 }
 
 // ─── 表单 ──────────────────────────────────────────────

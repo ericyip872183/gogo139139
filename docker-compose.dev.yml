@@ -41,6 +41,8 @@ services:
       REDIS_PASSWORD: panlei_redis_2024
       JWT_SECRET: panlei_jwt_secret_key_2024
       NODE_ENV: development
+      DEBUG_AI_IMPORT: 'true'
+      VOLCENGINE_AI_KEY: ${VOLCENGINE_AI_KEY:-}
     ports:
       - '3000:3000'
     depends_on:
@@ -50,6 +52,7 @@ services:
         condition: service_started
     volumes:
       - backend_uploads:/app/packages/backend/uploads
+      - ./logs:/app/logs
     restart: unless-stopped
 
   frontend:
