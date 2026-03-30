@@ -71,8 +71,10 @@ export class AiImportService {
         tenantId,
         userId,
         fileType: files[0].mimetype.includes('pdf') ? 'pdf' :
-                  files[0].mimetype.includes('word') ? 'word' :
-                  files[0].mimetype.includes('image') ? 'image' : 'other',
+                  files[0].mimetype.includes('word') || files[0].mimetype.includes('openxmlformats-officedocument.wordprocessingml') ? 'word' :
+                  files[0].mimetype.includes('image') ? 'image' :
+                  files[0].mimetype.includes('text') || files[0].originalname.endsWith('.txt') ? 'txt' :
+                  files[0].mimetype.includes('excel') || files[0].mimetype.includes('spreadsheetml') ? 'excel' : 'other',
         fileName: files.map(f => f.originalname).join(', '),
         fileUrl: '',
         model: model || '',
@@ -228,7 +230,8 @@ export class AiImportService {
     // 读取文件
     const buffer = await fs.readFile(filePath)
     const ext = filePath.split('.').pop()?.toLowerCase()
-    const isDocument = ['pdf', 'docx'].includes(ext || '')
+    // 支持文档类型：pdf, docx, txt, xlsx
+    const isDocument = ['pdf', 'docx', 'txt', 'xlsx', 'xls'].includes(ext || '')
 
     // ━━━ 第 2 步：上传文件到火山引擎，获取 file_id ━━━
     const fileId = await this.uploadFileToVolcano(buffer, filePath.split('/').pop() || 'file', apiKey)

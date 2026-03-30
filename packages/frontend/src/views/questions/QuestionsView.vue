@@ -414,7 +414,7 @@
     <!-- AI 智能导入弹窗 -->
     <el-dialog v-model="aiImportDialogVisible" title="AI 智能导入题目" width="700px" @close="resetAiImportForm">
       <div class="ai-import-tips">
-        <p>支持格式：Word (.docx) / PDF / 图片 (JPG/PNG)</p>
+        <p>支持格式：Word (.docx) / PDF / TXT / Excel (.xlsx) / 图片 (JPG/PNG)</p>
         <p class="tip-note">AI 自动识别题目并结构化，识别结果需人工校对后入库</p>
       </div>
 
@@ -450,7 +450,7 @@
         :show-file-list="false"
         :auto-upload="false"
         multiple
-        accept=".docx,.pdf,.jpg,.jpeg,.png"
+        accept=".docx,.pdf,.txt,.xlsx,.xls,.jpg,.jpeg,.png"
         class="ai-upload"
       >
         <el-icon class="el-icon--upload"><Upload-Filled /></el-icon>
