@@ -252,8 +252,10 @@
                 <span class="module-icon">{{ mod.icon }}</span>
                 <div class="module-info">
                   <div class="module-name">{{ mod.name }}</div>
+                  <div class="module-type">{{ mod.type }}</div>
                 </div>
               </div>
+              <p class="module-desc">{{ mod.description }}</p>
               <div class="module-actions">
                 <el-button link type="primary" @click="showModuleDetail(mod)">介绍</el-button>
                 <el-button type="primary" size="small" @click="goToModule(mod.code)">进入模块</el-button>
@@ -355,8 +357,10 @@
                 <span class="module-icon">{{ mod.icon }}</span>
                 <div class="module-info">
                   <div class="module-name">{{ mod.name }}</div>
+                  <div class="module-type">{{ mod.type }}</div>
                 </div>
               </div>
+              <p class="module-desc">{{ mod.description }}</p>
               <div class="module-progress" v-if="mod.progress">
                 <el-progress :percentage="mod.progress" :stroke-width="6" />
                 <span class="progress-text">上次学习：{{ mod.lastStudy }}</span>
