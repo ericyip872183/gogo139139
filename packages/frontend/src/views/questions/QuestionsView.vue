@@ -1469,7 +1469,12 @@ async function pollTaskStatus() {
   pollTimer = setInterval(async () => {
     try {
       const res = await questionsApi.getAiImportTaskDetail(aiTaskId.value) as any
-      aiProgress.value = res.status === 'completed' ? 100 : 60
+      // 使用后端返回的进度，如果没有则根据状态估算
+      if (res.progress !== undefined) {
+        aiProgress.value = res.progress
+      } else {
+        aiProgress.value = res.status === 'completed' ? 100 : 60
+      }
       aiTotalCount.value = res.totalCount
 
       if (res.status === 'completed') {
@@ -1485,7 +1490,14 @@ async function pollTaskStatus() {
           pollTimer = null
         }
       } else {
-        progressText.value = 'AI 正在识别题目，请稍候...'
+        // 根据进度显示不同提示
+        if (res.progress < 50) {
+          progressText.value = '正在上传文件...'
+        } else if (res.progress < 80) {
+          progressText.value = 'AI 正在识别题目，请稍候...'
+        } else {
+          progressText.value = '正在保存题目...'
+        }
       }
     } catch (e) {
       console.error('轮询任务状态失败:', e)
@@ -1505,6 +1517,12 @@ function getTypeTag(type: string) {
     MULTIPLE: 'warning',
     JUDGE: 'success',
     FILL: 'info',
+    A1: '',
+    A1_N: 'warning',
+    A2: '',
+    A3: '',
+    A4: '',
+    C: 'primary',
   }
   return map[type] || ''
 }
@@ -1516,6 +1534,12 @@ function getTypeLabel(type: string) {
     MULTIPLE: '多选题',
     JUDGE: '判断题',
     FILL: '填空题',
+    A1: 'A1 型题',
+    A1_N: 'A1 否定题',
+    A2: 'A2 型题',
+    A3: 'A3 型题',
+    A4: 'A4 型题',
+    C: 'C 型题',
   }
   return map[type] || type
 }
@@ -1525,13 +1549,24 @@ function validateAnswer(type: string, answer: string): boolean {
   if (!answer) return false
   const trimmed = answer.trim()
 
-  if (type === 'SINGLE') {
-    return /^[A-D]$/.test(trimmed)
+  if (type === 'SINGLE' || type === 'A1' || type === 'A1_N' || type === 'A2') {
+    return /^[A-E]$/.test(trimmed)
   } else if (type === 'MULTIPLE') {
     return /^[A-E]{2,5}$/.test(trimmed)
   } else if (type === 'JUDGE') {
     return /^[AB]$/.test(trimmed)
   } else if (type === 'FILL') {
+    return trimmed.length > 0
+  } else if (type === 'A3' || type === 'A4') {
+    // A3/A4 型题的答案是 JSON 数组，如 ["C", "A", "B"]
+    try {
+      const ansArray = JSON.parse(answer)
+      return Array.isArray(ansArray) && ansArray.every((a: any) => /^[A-E]$/.test(String(a)))
+    } catch {
+      return false
+    }
+  } else if (type === 'C') {
+    // C 型题的答案是选项对象数组或标签字符串
     return trimmed.length > 0
   }
   return true
@@ -1653,15 +1688,18 @@ async function confirmAiImport() {
     return
   }
 
-  // 校验答案格式
+  // 校验答案格式（只提示，不拦截）
   const invalidItems = selectedItems.filter(item => !validateAnswer(item.questionType, item.answer))
   if (invalidItems.length > 0) {
-    ElMessageBox.alert(
-      `发现 ${invalidItems.length} 道题目的答案格式不正确，请先修正`,
-      '答案格式错误',
-      { type: 'warning' }
+    const confirmed = await ElMessageBox.confirm(
+      `发现 ${invalidItems.length} 道题目的答案格式可能不正确，是否继续导入？`,
+      '提示',
+      { type: 'warning', confirmButtonText: '继续', cancelButtonText: '取消' }
     )
-    return
+    if (!confirmed) {
+      aiConfirming.value = false
+      return
+    }
   }
 
   aiConfirming.value = true

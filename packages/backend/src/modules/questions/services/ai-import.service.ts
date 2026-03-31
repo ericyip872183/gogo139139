@@ -78,7 +78,8 @@ export class AiImportService {
         fileName: files.map(f => f.originalname).join(', '),
         fileUrl: '',
         model: model || '',
-        status: 'pending',
+        status: 'processing',  // 直接设置为 processing，因为文件上传已经开始
+        progress: 10,  // 初始进度 10%
         totalCount: 0,
       },
     })
@@ -133,30 +134,68 @@ export class AiImportService {
   ) {
     await this.prisma.aiImportTask.update({
       where: { id: taskId },
-      data: { status: 'processing' },
+      data: { status: 'processing', progress: 40 },
     })
 
     const allParsedQuestions = []
+    const totalFiles = filePaths.length
 
-    for (const filePath of filePaths) {
+    for (let i = 0; i < filePaths.length; i++) {
+      const filePath = filePaths[i]
       try {
+        // 更新进度：每个文件处理前更新进度
+        const fileProgress = 40 + Math.floor((i / totalFiles) * 40) // 40-80%
+        await this.prisma.aiImportTask.update({
+          where: { id: taskId },
+          data: { progress: fileProgress },
+        })
         const parsedQuestions = await this.parseQuestionsWithAI(filePath, tenantId, model)
         allParsedQuestions.push(...parsedQuestions)
 
         // 保存为待校对项
-        for (const q of parsedQuestions) {
-          await this.prisma.aiImportItem.create({
-            data: {
-              taskId,
-              questionType: q.questionType,
-              content: q.content,
-              options: q.options as any,
-              answer: q.answer,
-              explanation: q.explanation,
-              difficulty: q.difficulty || 'MEDIUM',
-              status: 'pending',
-            },
-          })
+        const totalQuestions = parsedQuestions.length
+        for (let j = 0; j < parsedQuestions.length; j++) {
+          const q = parsedQuestions[j]
+          try {
+            // 处理 answer 字段：C 型题的 answer 是对象数组，需要转换为字符串
+            let answer = q.answer
+            if (Array.isArray(answer)) {
+              // 如果是对象数组，提取所有 isCorrect=true 的 label
+              if (answer.length > 0 && typeof answer[0] === 'object') {
+                answer = answer.filter((a: any) => a.isCorrect).map((a: any) => a.label).join(',')
+              } else {
+                // 如果是字符串数组，直接 join
+                answer = answer.join(',')
+              }
+            }
+
+            await this.prisma.aiImportItem.create({
+              data: {
+                taskId,
+                questionType: q.questionType,
+                content: q.content,
+                options: q.options as any,
+                answer: answer,
+                explanation: q.explanation,
+                difficulty: q.difficulty || 'MEDIUM',
+                status: 'pending',
+              },
+            })
+
+            // 更新题目保存进度（80-95%）
+            const savedCount = i * totalQuestions + j + 1
+            const totalSavedExpected = totalFiles * totalQuestions
+            const saveProgress = 80 + Math.floor((savedCount / totalSavedExpected) * 15)
+            await this.prisma.aiImportTask.update({
+              where: { id: taskId },
+              data: { progress: saveProgress },
+            })
+
+            console.log(`✅ 题目保存成功: ${q.content.slice(0, 30)}...`)
+          } catch (saveError) {
+            console.error(`❌ 题目保存失败: ${q.content.slice(0, 30)}...`, saveError.message)
+            console.error('题目数据:', JSON.stringify(q, null, 2))
+          }
         }
       } catch (error) {
         log(LogLevel.ERROR, 'processFiles', '文件处理失败', {
@@ -173,6 +212,7 @@ export class AiImportService {
       where: { id: taskId },
       data: {
         status: 'completed',
+        progress: 100,
         totalCount: allParsedQuestions.length,
         completedAt: new Date(),
       },
@@ -190,6 +230,10 @@ export class AiImportService {
     let baseUrl: string | undefined
     let aiModel: string | undefined
 
+    // 文档理解需要使用支持 input_file 的模型
+    // 优先使用 doubao-seed 系列模型（支持文档理解）
+    const docUnderstandingModel = 'doubao-seed-2-0-lite-260215'
+
     const tenantModel = await this.prisma.tenantAiModel.findFirst({
       where: { tenantId, scene: 'question_import', isDefault: true, isEnabled: true },
       include: { model: { include: { provider: true } } },
@@ -198,7 +242,8 @@ export class AiImportService {
     if (tenantModel && tenantModel.model) {
       apiKey = tenantModel.model.provider.apiKey
       baseUrl = tenantModel.model.provider.baseUrl
-      aiModel = tenantModel.model.modelId
+      // 文档理解强制使用支持 input_file 的模型
+      aiModel = docUnderstandingModel
     } else if (model) {
       const aiModelRecord = await this.prisma.aiModel.findFirst({
         where: { modelId: model, isEnabled: true },
@@ -207,7 +252,8 @@ export class AiImportService {
       if (aiModelRecord && aiModelRecord.provider) {
         apiKey = aiModelRecord.provider.apiKey
         baseUrl = aiModelRecord.provider.baseUrl
-        aiModel = aiModelRecord.modelId
+        // 文档理解强制使用支持 input_file 的模型
+        aiModel = docUnderstandingModel
       }
     }
 
@@ -219,7 +265,8 @@ export class AiImportService {
       if (defaultProvider) {
         apiKey = defaultProvider.apiKey
         baseUrl = defaultProvider.baseUrl
-        aiModel = defaultProvider.models[0]?.modelId || ''
+        // 文档理解强制使用支持 input_file 的模型
+        aiModel = docUnderstandingModel
       }
     }
 
@@ -230,8 +277,8 @@ export class AiImportService {
     // 读取文件
     const buffer = await fs.readFile(filePath)
     const ext = filePath.split('.').pop()?.toLowerCase()
-    // 支持文档类型：pdf, docx, txt, xlsx
-    const isDocument = ['pdf', 'docx', 'txt', 'xlsx', 'xls'].includes(ext || '')
+    // 支持文档类型：pdf, docx, txt, xlsx, xls, md
+    const isDocument = ['pdf', 'docx', 'txt', 'xlsx', 'xls', 'md'].includes(ext || '')
 
     // ━━━ 第 2 步：上传文件到火山引擎，获取 file_id ━━━
     const fileId = await this.uploadFileToVolcano(buffer, filePath.split('/').pop() || 'file', apiKey)
@@ -243,23 +290,32 @@ export class AiImportService {
 
 每道题目的格式：
 {
-  "questionType": "SINGLE" | "MULTIPLE" | "JUDGE" | "FILL",
+  "questionType": "A1" | "A1_N" | "A2" | "A3" | "A4" | "C" | "SINGLE" | "MULTIPLE" | "JUDGE" | "FILL",
   "content": "题目内容（不包含选项）",
   "options": [
-    { "label": "A", "content": "选项 A 内容", "isCorrect": true/false },
+    { "label": "A", "content": "选项 A 内容", "isCorrect": true/false, "optionType": "correct"|"error"|"irrelevant"（C 型题专用）},
     ...
   ],
-  "answer": "正确答案（单选/判断：A/B/C/D；多选：ABCD；填空：答案内容）",
+  "answer": "正确答案（单选/A1/A2/A3/A4: A/B/C/D/E；多选：ABCD；判断：A/B；填空：答案内容；C 型题：返回选项对象数组）",
   "difficulty": "EASY" | "MEDIUM" | "HARD",
   "explanation": "题目解析（可选）"
 }
 
 要求：
-1. 准确识别题型（单选/多选/判断/填空）
-2. 选择题的选项只包含 label 和 content，isCorrect 根据答案判断
+1. 准确识别题型：
+   - A1 型题：题干为论述题，5 个备选答案，选正确项
+   - A1 否定题：题干有否定词（不属、不是、错误等），5 个备选答案，选错误项
+   - A2 型题：简要病例 + 单选题，5 个备选答案
+   - A3 型题：临床情景 +3 个相关问题，每题 5 个备选答案
+   - A4 型题：临床情景 +5 个相关问题（含假设信息），每题 5 个备选答案
+   - C 型题：完整病例 + 多个问题（至少 5 问），每问 6-12 个选项，不定项选择
+2. 选择题的选项只包含 label（A/B/C/D/E/F...或 1/2/3/4/5...）、content 和 isCorrect
 3. 判断题的选项固定为 A.正确 B.错误
 4. 填空题如果没有明确答案，标记 answer 为"UNKNOWN"
-5. 直接返回 JSON 数组，不要包含任何其他说明文字`
+5. C 型题的特殊处理：
+   - optionType 标记每个选项是"correct"（正确）、"error"（错误）还是"irrelevant"（无关）
+   - 如果标注了关键选项，增加 isKey=true
+6. 直接返回 JSON 数组，不要包含任何其他说明文字`
 
     // Responses API 请求格式
     const requestBody = {
@@ -539,6 +595,7 @@ export class AiImportService {
           'Content-Type': `multipart/form-data; boundary=${boundary}`,
           'Content-Length': body.length,
         },
+        timeout: 60000, // 60 秒超时
       }, (res) => {
         let responseBody = ''
         res.on('data', (chunk) => { responseBody += chunk })
@@ -551,6 +608,10 @@ export class AiImportService {
         })
       })
       req.on('error', reject)
+      req.on('timeout', () => {
+        req.destroy()
+        reject(new Error('文件上传超时'))
+      })
       req.write(body)
       req.end()
     })
@@ -562,8 +623,52 @@ export class AiImportService {
     // 等待文件状态变为 active
     let fileId = response.id
     let status = response.status
+
+    // 如果文件正在处理，轮询等待最多 60 秒
     if (status === 'processing') {
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      const maxWait = 60000 // 60 秒
+      const startTime = Date.now()
+      while (status === 'processing' && Date.now() - startTime < maxWait) {
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        // 查询文件状态
+        const statusResponse = await new Promise<any>((resolve, reject) => {
+          const url = new URL(`${uploadUrl}/${fileId}`)
+          const req = https.request({
+            hostname: url.hostname,
+            port: 443,
+            path: url.pathname,
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            timeout: 10000,
+          }, (res) => {
+            let responseBody = ''
+            res.on('data', (chunk) => { responseBody += chunk })
+            res.on('end', () => {
+              try {
+                resolve(JSON.parse(responseBody))
+              } catch {
+                reject(new Error(`Invalid JSON response: ${responseBody.substring(0, 200)}`))
+              }
+            })
+          })
+          req.on('error', reject)
+          req.on('timeout', () => {
+            req.destroy()
+            reject(new Error('查询文件状态超时'))
+          })
+          req.end()
+        })
+        status = statusResponse.status
+        if (status === 'failed') {
+          throw new Error(`文件处理失败：${statusResponse.error?.message || '未知错误'}`)
+        }
+      }
+
+      if (status !== 'active') {
+        console.warn(`文件 ${fileId} 处理后状态为 ${status}，但仍将继续`)
+      }
     }
 
     return fileId
@@ -585,6 +690,7 @@ export class AiImportService {
           'Content-Type': 'application/json; charset=utf-8',
           'Content-Length': Buffer.byteLength(JSON.stringify(data)),
         },
+        timeout: 300000, // 300 秒超时（文档处理需要更长时间）
       }, (res) => {
         let body = ''
         res.on('data', (chunk) => { body += chunk })
@@ -594,6 +700,10 @@ export class AiImportService {
         })
       })
       req.on('error', reject)
+      req.on('timeout', () => {
+        req.destroy()
+        reject(new Error('AI 请求超时'))
+      })
       req.write(JSON.stringify(data))
       req.end()
     })

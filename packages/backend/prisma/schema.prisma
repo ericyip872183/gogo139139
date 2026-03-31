@@ -604,6 +604,7 @@ model AiImportTask {
   fileUrl      String   @db.VarChar(500)
   model        String   @db.VarChar(100) @default("doubao-seed-2.0-lite")
   status       String   @db.VarChar(20)  @default("pending")  // pending / processing / completed / failed
+  progress     Int      @default(0)      // 进度百分比 0-100
   totalCount   Int      @default(0)
   successCount Int      @default(0)
   errorCount   Int      @default(0)
